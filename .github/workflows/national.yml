@@ -11,6 +11,8 @@ on:
 
 permissions:
   contents: read
+  pages: write
+  id-token: write
 
 concurrency:
   group: tse-bu-national
@@ -243,6 +245,16 @@ jobs:
       - name: Generate reception timeline dashboard
         run: python scripts/generate_timeline_dashboard.py
 
+      - name: Prepare GitHub Pages site
+        run: |
+          mkdir -p pages
+          cp data/processed/dashboard_timeline_recebimento_bu_2026.html pages/index.html
+
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: pages
+
       - name: Upload national artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -253,3 +265,16 @@ jobs:
             data/processed/dashboard_timeline_recebimento_bu_2026.html
           if-no-files-found: error
           retention-days: 30
+
+  deploy-pages:
+    name: Deploy GitHub Pages
+    needs: consolidate
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
