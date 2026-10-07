@@ -132,9 +132,9 @@ h1{font-size:30px;line-height:1.15;margin:5px 0 8px}h2{font-size:18px;margin:0 0
 label{display:flex;flex-direction:column;gap:5px;font-weight:600;color:#34404b}select{min-width:220px;padding:9px 11px;border:1px solid #cbd4dd;border-radius:8px;background:#fff;font:inherit}
 .kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:16px}.kpi{padding:16px}.kpi .label{color:var(--muted);font-size:12px}.kpi .value{font-size:21px;font-weight:750;margin-top:4px}
 .card{padding:18px;margin-bottom:16px}.chart-wrap{width:100%;overflow:hidden}.chart{width:100%;height:390px}.legend{display:flex;gap:18px;color:var(--muted);font-size:12px;margin-top:8px}
-.note{font-size:12px;color:var(--muted);padding-top:8px}.milestones{display:grid;grid-template-columns:repeat(7,1fr);gap:10px;margin-top:14px}.milestone{border:1px solid var(--line);border-radius:10px;padding:12px;background:#fafbfd}.milestone .pct{font-size:12px;color:var(--muted)}.milestone .time{font-weight:700;margin-top:4px}.table-wrap{overflow:auto;margin-top:14px}.compare{width:100%;border-collapse:collapse;min-width:700px}.compare th,.compare td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}.compare th:first-child,.compare td:first-child{text-align:left}.compare th{font-size:12px;color:var(--muted);font-weight:700}.compare td{font-variant-numeric:tabular-nums}.foot{color:var(--muted);font-size:12px;margin-top:20px}
+.note{font-size:12px;color:var(--muted);padding-top:8px}.milestones{display:grid;grid-template-columns:repeat(7,1fr);gap:10px;margin-top:14px}.milestone{border:1px solid var(--line);border-radius:10px;padding:12px;background:#fafbfd}.insights{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:14px}.insight{border:1px solid var(--line);border-radius:10px;padding:14px;background:#fafbfd}.insight .label{font-size:12px;color:var(--muted)}.insight .value{font-size:22px;font-weight:750;margin-top:3px}.insight .context{font-size:12px;color:var(--muted);margin-top:4px}.rank-badge{display:inline-block;padding:3px 7px;border-radius:999px;background:#eef4f8;font-size:12px;font-weight:700}.milestone .pct{font-size:12px;color:var(--muted)}.milestone .time{font-weight:700;margin-top:4px}.table-wrap{overflow:auto;margin-top:14px}.compare{width:100%;border-collapse:collapse;min-width:700px}.compare th,.compare td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}.compare th:first-child,.compare td:first-child{text-align:left}.compare th{font-size:12px;color:var(--muted);font-weight:700}.compare td{font-variant-numeric:tabular-nums}.foot{color:var(--muted);font-size:12px;margin-top:20px}
 svg text{font-family:inherit;fill:#66727e;font-size:11px}.grid{stroke:#e8edf2}.axis{stroke:#b9c3cc}.curve{fill:none;stroke:var(--accent);stroke-width:2.5}.bar{fill:var(--accent2);opacity:.75}
-@media(max-width:1100px){.kpis{grid-template-columns:repeat(3,1fr)}.milestones{grid-template-columns:repeat(4,1fr)}}@media(max-width:900px){.kpis{grid-template-columns:repeat(2,1fr)}.chart{height:320px}}@media(max-width:560px){.wrap{padding:16px}.kpis{grid-template-columns:1fr 1fr}.milestones{grid-template-columns:repeat(2,1fr)}h1{font-size:24px}}
+@media(max-width:1100px){.kpis{grid-template-columns:repeat(3,1fr)}.milestones{grid-template-columns:repeat(4,1fr)}.insights{grid-template-columns:1fr 1fr}}@media(max-width:900px){.kpis{grid-template-columns:repeat(2,1fr)}.chart{height:320px}}@media(max-width:560px){.wrap{padding:16px}.kpis{grid-template-columns:1fr 1fr}.milestones,.insights{grid-template-columns:1fr 1fr}h1{font-size:24px}}
 </style>
 </head>
 <body>
@@ -167,6 +167,11 @@ svg text{font-family:inherit;fill:#66727e;font-size:11px}.grid{stroke:#e8edf2}.a
 <div id="milestones" class="milestones"></div>
 </section>
 <section class="card">
+<h2>Leitura executiva da UF</h2>
+<div class="sub">Posição relativa da UF selecionada frente às 27 UFs. O benchmark usa a mediana nacional das durações observadas, sem comparar horários absolutos entre fusos.</div>
+<div id="insights" class="insights"></div>
+</section>
+<section class="card">
 <h2>Comparativo entre UFs</h2>
 <div class="sub">Métricas de duração são calculadas dentro de cada UF e, portanto, não dependem de conversão de fuso horário. A ordenação usa o tempo entre 25% e 95% dos BUs recebidos.</div>
 <div class="table-wrap">
@@ -197,7 +202,25 @@ function render(){
   ["Último BU",fmtDate(k.last)],["Janela observada",duration(k.duration_min)],
   ["Pico em 5 min",fmtInt(k.peak_count)],["Horário do pico",fmtDate(k.peak_time)]
  ].map(x=>'<div class="card kpi"><div class="label">'+x[0]+'</div><div class="value">'+x[1]+'</div></div>').join("");
- drawLine($("cum"),s,"pct",100,"%");drawBars($("flow"),s);drawMilestones($("milestones"),k.milestones);drawComparison($("comparison"));
+ drawLine($("cum"),s,"pct",100,"%");drawBars($("flow"),s);drawMilestones($("milestones"),k.milestones);drawInsights($("insights"),uf,k);drawComparison($("comparison"));
+}
+function median(values){const v=values.filter(x=>x!=null).sort((a,b)=>a-b);if(!v.length)return null;const m=Math.floor(v.length/2);return v.length%2?v[m]:(v[m-1]+v[m])/2}
+function drawInsights(container,uf,k){
+ const durations25=UFS.map(u=>DATA.kpis[u].duration_25_95_min);
+ const durations90=UFS.map(u=>DATA.kpis[u].duration_90_100_min);
+ const valid25=durations25.filter(x=>x!=null);
+ const valid90=durations90.filter(x=>x!=null);
+ const med25=median(valid25),med90=median(valid90);
+ const rank25=1+valid25.filter(x=>x<k.duration_25_95_min).length;
+ const rank90=1+valid90.filter(x=>x<k.duration_90_100_min).length;
+ const delta25=k.duration_25_95_min!=null&&med25!=null?k.duration_25_95_min-med25:null;
+ const delta90=k.duration_90_100_min!=null&&med90!=null?k.duration_90_100_min-med90:null;
+ const trend=d=>d==null?"—":(d>0?"acima da mediana":d<0?"abaixo da mediana":"igual à mediana");
+ container.innerHTML=[
+  ["25% → 95%",durationNullable(k.duration_25_95_min),"Mediana: "+durationNullable(med25)+" • "+trend(delta25),rank25+"º de "+valid25.length],
+  ["90% → 100%",durationNullable(k.duration_90_100_min),"Mediana: "+durationNullable(med90)+" • "+trend(delta90),rank90+"º de "+valid90.length],
+  ["Concentração no pico",k.peak_share_pct.toLocaleString("pt-BR",{maximumFractionDigits:2})+"%","Dos BUs recebidos no intervalo de maior fluxo","Pico: "+fmtInt(k.peak_count)]
+ ].map(x=>'<div class="insight"><div class="label">'+x[0]+'</div><div class="value">'+x[1]+'</div><div class="context">'+x[2]+'</div><div class="context"><span class="rank-badge">'+x[3]+'</span></div></div>').join("");
 }
 function drawComparison(container){
  const rows=UFS.map(uf=>({uf,k:DATA.kpis[uf]}))
