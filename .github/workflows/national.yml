@@ -1,0 +1,251 @@
+name: National 27-UF pipeline
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/**"
+      - "requirements.txt"
+      - ".github/workflows/national.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tse-bu-national
+  cancel-in-progress: false
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  process-uf:
+    name: Process ${{ matrix.uf }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        uf:
+          - AC
+          - AL
+          - AP
+          - AM
+          - BA
+          - CE
+          - DF
+          - ES
+          - GO
+          - MA
+          - MT
+          - MS
+          - MG
+          - PA
+          - PB
+          - PR
+          - PE
+          - PI
+          - RJ
+          - RN
+          - RS
+          - RO
+          - RR
+          - SC
+          - SP
+          - SE
+          - TO
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Download BU
+        run: python scripts/download_bu.py --uf ${{ matrix.uf }}
+
+      - name: Process BU
+        run: python scripts/process_bu.py --uf ${{ matrix.uf }}
+
+      - name: Validate processed UF
+        shell: bash
+        run: |
+          python - <<'PY'
+          import pandas as pd
+          from pathlib import Path
+
+          uf = "${{ matrix.uf }}"
+          path = Path(f"data/processed/votacao_presidencial_{uf}_2026.csv")
+          if not path.exists():
+              raise SystemExit(f"Missing output: {path}")
+
+          df = pd.read_csv(path, sep=";", encoding="utf-8-sig", dtype=str)
+          if df.empty:
+              raise SystemExit(f"{uf}: processed output is empty")
+
+          required = [
+              "SG_UF", "CD_MUNICIPIO", "NM_MUNICIPIO", "NR_ZONA",
+              "NR_SECAO", "NR_LOCAL_VOTACAO", "NR_URNA_EFETIVADA",
+              "QT_APTOS", "QT_COMPARECIMENTO", "QT_ABSTENCOES",
+              "DT_ABERTURA", "DT_ENCERRAMENTO", "DT_EMISSAO_BU",
+              "DT_BU_RECEBIDO", "VOTOS_FLAVIO_BOLSONARO", "VOTOS_LULA",
+              "VOTOS_BRANCO_PRES", "VOTOS_NULO_PRES", "TOTAL_VOTOS_PRES",
+          ]
+          missing = [c for c in required if c not in df.columns]
+          if missing:
+              raise SystemExit(f"{uf}: missing columns: {missing}")
+
+          if (df["SG_UF"] != uf).any():
+              raise SystemExit(f"{uf}: output contains another UF")
+
+          key = ["SG_UF", "CD_MUNICIPIO", "NR_ZONA", "NR_SECAO"]
+          if df[key].duplicated().any():
+              raise SystemExit(f"{uf}: duplicate section key")
+
+          vote = [
+              "VOTOS_FLAVIO_BOLSONARO", "VOTOS_LULA",
+              "VOTOS_BRANCO_PRES", "VOTOS_NULO_PRES",
+              "TOTAL_VOTOS_PRES",
+          ]
+          electoral = ["QT_APTOS", "QT_COMPARECIMENTO", "QT_ABSTENCOES"]
+          for col in vote + electoral:
+              df[col] = pd.to_numeric(df[col], errors="raise")
+
+          if (df[vote] < 0).any().any():
+              raise SystemExit(f"{uf}: negative vote count")
+          if (df[electoral] < 0).any().any():
+              raise SystemExit(f"{uf}: negative electorate/turnout")
+
+          expected = (
+              df["VOTOS_FLAVIO_BOLSONARO"]
+              + df["VOTOS_LULA"]
+              + df["VOTOS_BRANCO_PRES"]
+              + df["VOTOS_NULO_PRES"]
+          )
+          if not df["TOTAL_VOTOS_PRES"].eq(expected).all():
+              raise SystemExit(f"{uf}: total formula failed")
+          if expected.gt(df["QT_COMPARECIMENTO"]).any():
+              raise SystemExit(f"{uf}: requested votes exceed turnout")
+          if not df["QT_APTOS"].eq(
+              df["QT_COMPARECIMENTO"] + df["QT_ABSTENCOES"]
+          ).all():
+              raise SystemExit(f"{uf}: electorate != turnout + abstentions")
+
+          municipalities = df["CD_MUNICIPIO"].nunique()
+          print(f"UF={uf} sections={len(df):,} municipalities={municipalities:,}")
+          print(
+              "requested_votes="
+              f"{int(df['TOTAL_VOTOS_PRES'].sum()):,}"
+          )
+          PY
+
+      - name: Upload processed UF
+        uses: actions/upload-artifact@v4
+        with:
+          name: tse-bu-presidencial-2026-processed-${{ matrix.uf }}
+          path: data/processed/votacao_presidencial_${{ matrix.uf }}_2026.csv
+          if-no-files-found: error
+          retention-days: 14
+
+  consolidate:
+    name: Consolidate national table
+    needs: process-uf
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Download all processed UFs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: tse-bu-presidencial-2026-processed-*
+          path: data/processed
+          merge-multiple: true
+
+      - name: Consolidate and validate
+        run: python scripts/generate_table.py --uf ALL
+
+      - name: National QC
+        shell: bash
+        run: |
+          python - <<'PY'
+          import pandas as pd
+
+          path = "data/processed/votacao_presidencial_por_secao_2026.csv"
+          df = pd.read_csv(path, sep=";", encoding="utf-8-sig", dtype=str)
+
+          expected_ufs = {
+              "AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT",
+              "MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO",
+              "RR","SC","SP","SE","TO",
+          }
+          found_ufs = set(df["SG_UF"].dropna().unique())
+          if found_ufs != expected_ufs:
+              raise SystemExit(
+                  f"UF coverage mismatch. Missing={sorted(expected_ufs-found_ufs)} "
+                  f"Unexpected={sorted(found_ufs-expected_ufs)}"
+              )
+
+          if len(found_ufs) != 27:
+              raise SystemExit(f"Expected 27 UFs, found {len(found_ufs)}")
+
+          key = ["SG_UF", "CD_MUNICIPIO", "NR_ZONA", "NR_SECAO"]
+          if df[key].duplicated().any():
+              raise SystemExit("National duplicate section key detected")
+
+          vote = [
+              "VOTOS_FLAVIO_BOLSONARO", "VOTOS_LULA",
+              "VOTOS_BRANCO_PRES", "VOTOS_NULO_PRES",
+              "TOTAL_VOTOS_PRES",
+          ]
+          for col in vote:
+              df[col] = pd.to_numeric(df[col], errors="raise")
+
+          expected = (
+              df["VOTOS_FLAVIO_BOLSONARO"]
+              + df["VOTOS_LULA"]
+              + df["VOTOS_BRANCO_PRES"]
+              + df["VOTOS_NULO_PRES"]
+          )
+          if not df["TOTAL_VOTOS_PRES"].eq(expected).all():
+              raise SystemExit("National total formula failed")
+
+          print(f"National sections: {len(df):,}")
+          print(f"National municipalities: {df['CD_MUNICIPIO'].nunique():,}")
+          print("Sections by UF:")
+          print(df.groupby("SG_UF").size().to_string())
+          print("Requested votes by UF:")
+          print(df.groupby("SG_UF")["TOTAL_VOTOS_PRES"].sum().to_string())
+          PY
+
+      - name: Upload national artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: tse-bu-presidencial-2026-national
+          path: |
+            data/processed/votacao_presidencial_por_secao_2026.csv
+            data/processed/votacao_presidencial_por_secao_2026.md
+          if-no-files-found: error
+          retention-days: 30
