@@ -1,11 +1,26 @@
 import pandas as pd
 
-from scripts.generate_timeline_dashboard import build_series, prepare_payload
+from scripts.generate_timeline_dashboard import build_event_series, build_series, prepare_payload
 
 
 def make_csv(path):
     df = pd.DataFrame({
         "SG_UF": ["RR", "RR", "AC"],
+        "DT_ABERTURA": [
+            "04/10/2026 17:00:00",
+            "04/10/2026 17:01:00",
+            "04/10/2026 17:02:00",
+        ],
+        "DT_ENCERRAMENTO": [
+            "04/10/2026 17:30:00",
+            "04/10/2026 17:31:00",
+            "04/10/2026 17:32:00",
+        ],
+        "DT_EMISSAO_BU": [
+            "04/10/2026 17:40:00",
+            "04/10/2026 17:41:00",
+            "04/10/2026 17:42:00",
+        ],
         "DT_BU_RECEBIDO": [
             "04/10/2026 18:01:00",
             "04/10/2026 18:04:59",
@@ -61,3 +76,22 @@ def test_payload_exposes_peak_and_completion_milestones():
     assert kpi["duration_25_95_min"] == 10
     assert kpi["duration_90_100_min"] == 0
     assert kpi["peak_share_pct"] == 50.0
+
+
+def test_event_timeline_preserves_all_four_event_series(tmp_path):
+    path = tmp_path / "national.csv"
+    make_csv(path)
+
+    event_counts, event_totals = build_event_series(path)
+    assert set(event_counts) == {
+        "DT_ABERTURA", "DT_ENCERRAMENTO", "DT_EMISSAO_BU", "DT_BU_RECEBIDO"
+    }
+    assert event_totals["DT_ABERTURA"]["RR"] == 2
+    assert event_counts["DT_BU_RECEBIDO"]["RR"]["2026-10-04T18:00"] == 2
+
+    counts, totals = build_series(path)
+    payload = prepare_payload(counts, totals, event_counts, event_totals)
+    assert set(payload["events"]) == set(event_counts)
+    for event in event_counts:
+        assert payload["events"][event]["RR"][-1]["pct"] == 100.0
+
