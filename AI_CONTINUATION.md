@@ -1,79 +1,67 @@
 # AI Continuation Guide
 
-This repository is designed to be continued by another assistant from a short prompt.
-
 ## First read
-
-Always read:
-1. PROJECT_CONTEXT.md
-2. README.md
-3. the current GitHub Actions status
-4. the latest commits affecting scripts/ and .github/workflows/
+1. `PROJECT_CONTEXT.md`
+2. `README.md`
+3. Current GitHub Actions status
+4. Latest commits affecting `scripts/` and `.github/workflows/`
 
 ## Source of truth
-
-The project state is the repository plus its latest CI/workflow results. Chat history is supplemental.
+Repository state plus actual GitHub Actions results. Do not infer success from unit tests alone.
 
 ## Current priority
+The RR end-to-end pipeline is green. The active milestone is the national 27-UF workflow in `.github/workflows/national.yml`.
 
-The immediate priority is RR end-to-end validation after commit 9f6391f9f7fa6ef286b1bf738cd07cce0dee606d.
+National workflow design:
+- 27 Brazilian UFs only; exclude ZZ.
+- 1st round.
+- `CD_CARGO_PERGUNTA = 1`.
+- Requested vote codes: 22, 13, 95, 96.
+- Incremental/chunked processing.
+- Raw ZIPs remain ephemeral.
+- Per-UF processed CSV artifacts feed a final national consolidation job.
+- National consolidation uses SQLite-backed global section-key validation.
+- Final artifacts: national CSV and Markdown summary.
 
-The first RR attempt failed because derived columns were incorrectly treated as raw source columns. That was fixed.
+## Current checkpoint
+National workflow run #1:
+- Run ID: `37640000936`
+- Head: `d573865cc6a3b67f11d499223c9602ed14a23008`
+- The workflow contains 27 matrix jobs plus a consolidation job.
 
-Do not move to all 27 UFs until RR passes.
+Latest implementation:
+- `298dc8718bd671dfd0a97fd39cb0c440d4c404ce`: strengthened national consolidation validation.
+- `d573865cc6a3b67f11d499223c9602ed14a23008`: national 27-UF workflow.
+- `2bdc5096a4c714a5220462958c39c0bd749a2852`: persistent context updated.
 
-## Continuation behavior
-
-When the user says continue:
-- do not explain the whole history again;
-- inspect the current workflow/commit state;
-- execute the next unfinished task from PROJECT_CONTEXT.md;
-- make repository changes directly when possible;
-- verify the resulting workflow;
-- report only the relevant result and next checkpoint.
-
-## Data integrity
-
+## Integrity rules
 Never:
-- invent BU rows;
-- infer electoral results;
-- silently alter vote codes;
-- silently accept source schema changes;
-- commit raw TSE ZIPs;
-- declare completion based only on unit tests.
+- fabricate BU rows;
+- infer missing sections;
+- change vote codes silently;
+- commit raw ZIPs;
+- declare national completion before all 27 UFs and consolidation pass.
 
 Always:
 - use official TSE data;
-- preserve reproducibility;
+- validate actual source schema;
 - validate section uniqueness;
+- validate metadata consistency;
 - validate vote totals;
-- validate the actual raw schema;
 - process incrementally.
 
-## Important project decisions
-
-- 27 Brazilian UFs only; exclude ZZ.
-- 1st round only.
-- Presidential contest: CD_CARGO_PERGUNTA = 1.
-- Flávio Bolsonaro: 22.
-- Lula: 13.
-- Branco: 95.
-- Nulo: 96.
-- Total requested: 22 + 13 + 95 + 96.
-- CSV separator: ;.
-- Raw encoding: latin1.
-- Processed encoding: utf-8-sig.
-- Python: 3.10+.
-- Memory-safe processing is mandatory.
-- SQLite is used as disk-backed intermediate storage.
+## Continue behavior
+When the user says “continue”:
+1. Inspect the latest national/CI workflow status.
+2. If a job failed, inspect its exact log and fix the smallest concrete defect.
+3. If all 27 UF jobs pass, inspect national consolidation and artifact.
+4. Then close remaining audit/documentation work.
+5. Verify every resulting commit/workflow before reporting success.
 
 ## Definition of done
-
-The project is not finished until:
-1. RR passes end-to-end against the real TSE BU file;
-2. the 27 UFs process successfully;
-3. national consolidation passes validation;
-4. duplicate section keys are ruled out;
-5. generated CSV is available as an artifact/release;
-6. Caroebe/RR example is based on actual processed data;
-7. README and PROJECT_CONTEXT.md reflect the final state.
+- 27 UFs processed successfully.
+- National consolidation passes.
+- Duplicate section keys ruled out.
+- National CSV artifact available.
+- Caroebe/RR example based on actual data.
+- README and persistent context reflect final validated state.
