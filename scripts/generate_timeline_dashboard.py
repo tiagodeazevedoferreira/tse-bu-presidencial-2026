@@ -18,6 +18,12 @@ INPUT = Path("data/processed/votacao_presidencial_por_secao_2026.csv")
 DEFAULT_OUTPUT = Path("data/processed/dashboard_timeline_recebimento_bu_2026.html")
 CHUNK_SIZE = 100_000
 BIN_MINUTES = 5
+EVENT_FIELDS = {
+    "DT_ABERTURA": "Abertura",
+    "DT_ENCERRAMENTO": "Encerramento",
+    "DT_EMISSAO_BU": "Emissão do BU",
+    "DT_BU_RECEBIDO": "BU recebido",
+}
 
 
 def build_series(path: Path) -> tuple[dict, dict]:
@@ -62,7 +68,64 @@ def build_series(path: Path) -> tuple[dict, dict]:
     return all_counts, totals
 
 
-def prepare_payload(counts: dict[str, dict[str, int]], totals: dict[str, int]) -> dict:
+def build_event_series(path: Path) -> tuple[dict, dict]:
+    event_counts = {
+        event: {uf: {} for uf in UFS}
+        for event in EVENT_FIELDS
+    }
+    event_totals = {
+        event: {uf: 0 for uf in UFS}
+        for event in EVENT_FIELDS
+    }
+    usecols = ["SG_UF", *EVENT_FIELDS.keys()]
+
+    for chunk in pd.read_csv(
+        path,
+        sep=";",
+        encoding="utf-8-sig",
+        usecols=usecols,
+        dtype=str,
+        chunksize=CHUNK_SIZE,
+    ):
+        for event in EVENT_FIELDS:
+            parsed = pd.to_datetime(
+                chunk[event],
+                errors="coerce",
+                dayfirst=True,
+            )
+            if parsed.isna().any():
+                bad = chunk.loc[parsed.isna(), event].head(5).tolist()
+                raise ValueError(f"{event} inválido. Exemplos: {bad}")
+
+            bucket = parsed.dt.floor(f"{BIN_MINUTES}min")
+            tmp = pd.DataFrame({"uf": chunk["SG_UF"], "bucket": bucket})
+            grouped = tmp.groupby(["uf", "bucket"], sort=False).size()
+            for (uf, stamp), count in grouped.items():
+                if uf not in event_counts[event]:
+                    raise ValueError(f"UF inesperada no nacional: {uf}")
+                key = stamp.strftime("%Y-%m-%dT%H:%M")
+                event_counts[event][uf][key] = (
+                    event_counts[event][uf].get(key, 0) + int(count)
+                )
+                event_totals[event][uf] += int(count)
+
+    for event in EVENT_FIELDS:
+        merged = {}
+        for uf in UFS:
+            for stamp, count in event_counts[event][uf].items():
+                merged[stamp] = merged.get(stamp, 0) + count
+        event_counts[event]["BR"] = merged
+        event_totals[event]["BR"] = sum(merged.values())
+
+    return event_counts, event_totals
+
+
+def prepare_payload(
+    counts: dict[str, dict[str, int]],
+    totals: dict[str, int],
+    event_counts: dict[str, dict[str, dict[str, int]]] | None = None,
+    event_totals: dict[str, dict[str, int]] | None = None,
+) -> dict:
     series = {}
     kpis = {}
 
@@ -113,7 +176,32 @@ def prepare_payload(counts: dict[str, dict[str, int]], totals: dict[str, int]) -
         }
         series[uf] = points
 
-    return {"bin_minutes": BIN_MINUTES, "series": series, "kpis": kpis}
+    events = {}
+    if event_counts is not None and event_totals is not None:
+        for event, label in EVENT_FIELDS.items():
+            events[event] = {}
+            for uf, raw in event_counts[event].items():
+                ordered = sorted(raw.items())
+                cumulative = 0
+                points = []
+                total = event_totals[event][uf]
+                for stamp, count in ordered:
+                    cumulative += count
+                    points.append({
+                        "t": stamp,
+                        "n": count,
+                        "cum": cumulative,
+                        "pct": round(cumulative * 100 / total, 4),
+                    })
+                events[event][uf] = points
+
+    return {
+        "bin_minutes": BIN_MINUTES,
+        "series": series,
+        "events": events,
+        "event_labels": EVENT_FIELDS,
+        "kpis": kpis,
+    }
 
 
 HTML_TEMPLATE = r"""<!doctype html>
@@ -131,7 +219,7 @@ h1{font-size:30px;line-height:1.15;margin:5px 0 8px}h2{font-size:18px;margin:0 0
 .toolbar{padding:14px 16px;display:flex;gap:16px;align-items:end;flex-wrap:wrap;margin-bottom:16px}
 label{display:flex;flex-direction:column;gap:5px;font-weight:600;color:#34404b}select{min-width:220px;padding:9px 11px;border:1px solid #cbd4dd;border-radius:8px;background:#fff;font:inherit}
 .kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:16px}.kpi{padding:16px}.kpi .label{color:var(--muted);font-size:12px}.kpi .value{font-size:21px;font-weight:750;margin-top:4px}
-.card{padding:18px;margin-bottom:16px}.chart-wrap{width:100%;overflow:hidden}.chart{width:100%;height:390px}.legend{display:flex;gap:18px;color:var(--muted);font-size:12px;margin-top:8px}
+.card{padding:18px;margin-bottom:16px}.chart-wrap{width:100%;overflow:hidden}.chart{width:100%;height:390px}.event-chart{width:100%;height:430px}.legend{display:flex;gap:18px;color:var(--muted);font-size:12px;margin-top:8px;flex-wrap:wrap}.legend-item{display:inline-flex;align-items:center;gap:6px}.legend-line{display:inline-block;width:28px;height:3px;border-radius:2px}
 .note{font-size:12px;color:var(--muted);padding-top:8px}.milestones{display:grid;grid-template-columns:repeat(7,1fr);gap:10px;margin-top:14px}.milestone{border:1px solid var(--line);border-radius:10px;padding:12px;background:#fafbfd}.insights{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:14px}.ranking{width:100%;height:720px}.insight{border:1px solid var(--line);border-radius:10px;padding:14px;background:#fafbfd}.insight .label{font-size:12px;color:var(--muted)}.insight .value{font-size:22px;font-weight:750;margin-top:3px}.insight .context{font-size:12px;color:var(--muted);margin-top:4px}.rank-badge{display:inline-block;padding:3px 7px;border-radius:999px;background:#eef4f8;font-size:12px;font-weight:700}.milestone .pct{font-size:12px;color:var(--muted)}.milestone .time{font-weight:700;margin-top:4px}.table-wrap{overflow:auto;margin-top:14px}.compare{width:100%;border-collapse:collapse;min-width:700px}.compare th,.compare td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}.compare th:first-child,.compare td:first-child{text-align:left}.compare th{font-size:12px;color:var(--muted);font-weight:700}.compare td{font-variant-numeric:tabular-nums}.foot{color:var(--muted);font-size:12px;margin-top:20px}
 svg text{font-family:inherit;fill:#66727e;font-size:11px}.grid{stroke:#e8edf2}.axis{stroke:#b9c3cc}.curve{fill:none;stroke:var(--accent);stroke-width:2.5}.bar{fill:var(--accent2);opacity:.75}
 @media(max-width:1100px){.kpis{grid-template-columns:repeat(3,1fr)}.milestones{grid-template-columns:repeat(4,1fr)}.insights{grid-template-columns:1fr 1fr}}@media(max-width:900px){.kpis{grid-template-columns:repeat(2,1fr)}.chart{height:320px}}@media(max-width:560px){.wrap{padding:16px}.kpis{grid-template-columns:1fr 1fr}.milestones,.insights{grid-template-columns:1fr 1fr}h1{font-size:24px}}
@@ -150,6 +238,18 @@ svg text{font-family:inherit;fill:#66727e;font-size:11px}.grid{stroke:#e8edf2}.a
 <div class="note">“Brasil” mostra o agregado das 27 UFs. O horário é apresentado como registrado na fonte; não é feita conversão de fuso.</div>
 </div>
 <div class="kpis" id="kpis"></div>
+<section class="card">
+<h2>Linha do tempo dos eventos do BU</h2>
+<div class="sub">Percentual acumulado de seções ao longo da linha do tempo para abertura, encerramento, emissão do BU e recebimento. O filtro de UF se aplica a todas as quatro linhas.</div>
+<div class="chart-wrap"><svg id="events" class="event-chart" viewBox="0 0 1100 430" preserveAspectRatio="none"></svg></div>
+<div class="legend">
+<span class="legend-item"><span class="legend-line" style="background:#1769aa"></span>Abertura</span>
+<span class="legend-item"><span class="legend-line" style="background:#0f8b8d"></span>Encerramento</span>
+<span class="legend-item"><span class="legend-line" style="background:#8b5cf6"></span>Emissão do BU</span>
+<span class="legend-item"><span class="legend-line" style="background:#d97706"></span>BU recebido</span>
+</div>
+<div class="note">A linha representa o acumulado das seções cujo evento ocorreu até cada intervalo de 5 minutos. O horário é apresentado como registrado na fonte; não é feita conversão de fuso.</div>
+</section>
 <section class="card">
 <h2>Recebimento acumulado</h2>
 <div class="sub">Percentual de seções cujo BU já havia sido recebido até cada intervalo.</div>
@@ -208,7 +308,7 @@ function render(){
   ["Último BU",fmtDate(k.last)],["Janela observada",duration(k.duration_min)],
   ["Pico em 5 min",fmtInt(k.peak_count)],["Horário do pico",fmtDate(k.peak_time)]
  ].map(x=>'<div class="card kpi"><div class="label">'+x[0]+'</div><div class="value">'+x[1]+'</div></div>').join("");
- drawLine($("cum"),s,"pct",100,"%");drawBars($("flow"),s);drawMilestones($("milestones"),k.milestones);drawInsights($("insights"),uf,k);drawRanking($("ranking"));drawComparison($("comparison"));
+ drawEventTimeline($("events"),uf);drawLine($("cum"),s,"pct",100,"%");drawBars($("flow"),s);drawMilestones($("milestones"),k.milestones);drawInsights($("insights"),uf,k);drawRanking($("ranking"));drawComparison($("comparison"));
 }
 function median(values){const v=values.filter(x=>x!=null).sort((a,b)=>a-b);if(!v.length)return null;const m=Math.floor(v.length/2);return v.length%2?v[m]:(v[m-1]+v[m])/2}
 function drawInsights(container,uf,k){
@@ -267,6 +367,42 @@ function el(tag,a,text){
  for(const[k,v]of Object.entries(a||{}))n.setAttribute(k,v);
  if(text!=null)n.textContent=text;return n;
 }
+function drawEventTimeline(svg,uf){
+ clear(svg);
+ const events=DATA.events||{};
+ const fields=Object.keys(events);
+ if(!fields.length)return;
+ const colors={DT_ABERTURA:"#1769aa",DT_ENCERRAMENTO:"#0f8b8d",DT_EMISSAO_BU:"#8b5cf6",DT_BU_RECEBIDO:"#d97706"};
+ const labels=DATA.event_labels||{};
+ const all=fields.flatMap(field=>(events[field][uf]||[]));
+ if(!all.length)return;
+ const W=1100,H=430,L=62,R=22,T=24,B=48;
+ const minT=Math.min(...all.map(p=>new Date(p.t).getTime()));
+ const maxT=Math.max(...all.map(p=>new Date(p.t).getTime()));
+ const x=t=>L+(t-minT)/Math.max(maxT-minT,1)*(W-L-R);
+ const y=v=>H-B-v/100*(H-T-B);
+ for(let i=0;i<=4;i++){
+  const pct=i*25,yy=y(pct);
+  svg.append(el("line",{x1:L,x2:W-R,y1:yy,y2:yy,class:"grid"}));
+  svg.append(el("text",{x:8,y:yy+4},pct+"%"));
+ }
+ fields.forEach(field=>{
+  const points=events[field][uf]||[];
+  if(!points.length)return;
+  const pts=points.map(p=>x(new Date(p.t).getTime())+","+y(p.pct)).join(" ");
+  svg.append(el("polyline",{points:pts,fill:"none",stroke:colors[field]||"#1769aa","stroke-width":"2.5"}));
+ });
+ const step=Math.max(1,Math.floor((maxT-minT)/7/300000));
+ const seen=new Set();
+ all.sort((a,b)=>a.t.localeCompare(b.t)).forEach(p=>{
+  const stamp=p.t.slice(0,16);
+  if(seen.size>=8 || seen.has(stamp))return;
+  seen.add(stamp);
+  const xx=x(new Date(p.t).getTime());
+  svg.append(el("line",{x1:xx,x2:xx,y1:H-B,y2:H-B+5,class:"axis"}));
+  svg.append(el("text",{x:Math.max(L,Math.min(xx-18,W-R-38)),y:H-12},fmtDate(p.t).slice(11,16)));
+ });
+}
 function drawLine(svg,s,field,maxY,suffix){
  clear(svg);if(!s.length)return;const c=scales(svg,s,field);c.max=maxY;
  for(let i=0;i<=4;i++){const y=c.y(i*maxY/4);svg.append(el("line",{x1:c.L,x2:c.W-c.R,y1:y,y2:y,class:"grid"}));svg.append(el("text",{x:8,y:y+4},Math.round(i*maxY/4)+suffix))}
@@ -302,7 +438,8 @@ def main() -> None:
         raise SystemExit(f"Input not found: {path}")
 
     counts, totals = build_series(path)
-    payload = prepare_payload(counts, totals)
+    event_counts, event_totals = build_event_series(path)
+    payload = prepare_payload(counts, totals, event_counts, event_totals)
     output.parent.mkdir(parents=True, exist_ok=True)
     html = HTML_TEMPLATE.replace("__DATA__", json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
     html = html.replace("__UFS__", json.dumps(UFS))
