@@ -75,6 +75,19 @@ def connect(db_path: Path) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path)
     conn.execute(
         """
+        CREATE TABLE IF NOT EXISTS vote_rows (
+            SG_UF TEXT NOT NULL,
+            CD_MUNICIPIO TEXT NOT NULL,
+            NR_ZONA TEXT NOT NULL,
+            NR_SECAO TEXT NOT NULL,
+            NR_VOTAVEL INTEGER NOT NULL,
+            QT_VOTOS INTEGER NOT NULL,
+            PRIMARY KEY (SG_UF, CD_MUNICIPIO, NR_ZONA, NR_SECAO, NR_VOTAVEL)
+        )
+        """
+    )
+    conn.execute(
+        """
         CREATE TABLE IF NOT EXISTS sections (
             SG_UF TEXT NOT NULL,
             CD_MUNICIPIO TEXT NOT NULL,
@@ -142,6 +155,43 @@ def process_csv(zf: zipfile.ZipFile, member: str, conn: sqlite3.Connection) -> N
                 chunk[col] = pd.to_numeric(chunk[col], errors="coerce")
 
             for key, group in chunk.groupby(SECTION_KEY, dropna=False):
+                requested = group[group["NR_VOTAVEL"].isin([22, 13, 95, 96])][
+                    SECTION_KEY + ["NR_VOTAVEL", "QT_VOTOS"]
+                ]
+                for vote_key, vote_group in requested.groupby(
+                    SECTION_KEY + ["NR_VOTAVEL"], dropna=False
+                ):
+                    if len(vote_group) != 1:
+                        raise ValueError(
+                            f"{member}: duplicate requested vote row for "
+                            f"section={vote_key[:-1]} vote={vote_key[-1]}"
+                        )
+                    params = dict(
+                        SG_UF=vote_key[0],
+                        CD_MUNICIPIO=vote_key[1],
+                        NR_ZONA=vote_key[2],
+                        NR_SECAO=vote_key[3],
+                        NR_VOTAVEL=int(vote_key[4]),
+                        QT_VOTOS=int(vote_group["QT_VOTOS"].iloc[0]),
+                    )
+                    try:
+                        conn.execute(
+                            """
+                            INSERT INTO vote_rows
+                            VALUES (
+                                :SG_UF, :CD_MUNICIPIO, :NR_ZONA, :NR_SECAO,
+                                :NR_VOTAVEL, :QT_VOTOS
+                            )
+                            """,
+                            params,
+                        )
+                    except sqlite3.IntegrityError as exc:
+                        raise ValueError(
+                            f"{member}: duplicate requested vote row across "
+                            f"chunks/files for section={vote_key[:-1]} "
+                            f"vote={vote_key[-1]}"
+                        ) from exc
+
                 row = {
                     "SG_UF": key[0],
                     "CD_MUNICIPIO": key[1],
