@@ -30,9 +30,9 @@ def make_df(total: int) -> pd.DataFrame:
 
 
 def test_total_presidencial():
-    validate(make_df(35))
+    validate(make_df(35), "RR")
 
 
 def test_total_incorreto():
     with pytest.raises(ValueError):
-        validate(make_df(99))
+        validate(make_df(99), "RR")
