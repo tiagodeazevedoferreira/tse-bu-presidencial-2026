@@ -1,21 +1,21 @@
 # Project Context — TSE BU Presidencial 2026
 
-> **Purpose:** persistent handoff/context for future prompts. Read this file before changing the project. It is intended to let a new assistant continue the work without reconstructing the history from chat.
+> Persistent handoff for continuing this repository. The repository and its latest GitHub Actions results are the source of truth.
 
 ## 1. Project identity
 
-Repository: `tiagodeazevedoferreira/tse-bu-presidencial-2026`
-Branch of record: `main`
-Objective: build a reproducible, auditable pipeline from the TSE 2026 Boletim de Urna (BU) open data for the **1st round** of the Brazilian presidential election, producing one row per electoral section for the 27 Brazilian UFs.
+Repository: `tiagodeazevedoferreira/tse-bu-presidencial-2026`  
+Branch of record: `main`  
+Objective: reproducible, auditable processing of official TSE 2026 Boletim de Urna data for the **1st round**, producing one row per electoral section for the 27 Brazilian UFs.
 
-Official TSE dataset:
+Official dataset:
 `https://dadosabertos.tse.jus.br/dataset/resultados-2026-boletim-de-urna`
 
-The project deliberately excludes `ZZ` (voting abroad) because the target is the 27 Brazilian UFs.
+Exclude `ZZ` (abroad).
 
 ## 2. Target output
 
-The final consolidated table must contain these columns, in this order:
+Columns, in order:
 
 1. SG_UF
 2. CD_MUNICIPIO
@@ -37,249 +37,146 @@ The final consolidated table must contain these columns, in this order:
 18. VOTOS_NULO_PRES
 19. TOTAL_VOTOS_PRES
 
-Business definition:
-- `CD_CARGO_PERGUNTA = 1` = presidential contest to process.
-- Flávio Bolsonaro = vote code `22`.
-- Lula = vote code `13`.
+Business rules:
+- `CD_CARGO_PERGUNTA = 1` = presidential contest.
+- Flávio Bolsonaro = `22`.
+- Lula = `13`.
 - Branco = `95`.
 - Nulo = `96`.
-- `TOTAL_VOTOS_PRES` is the sum of the four requested components (22 + 13 + 95 + 96). It is **not** the sum of every presidential candidate unless the requirements are later changed.
+- `TOTAL_VOTOS_PRES = 22 + 13 + 95 + 96` only; it is not all presidential candidates.
+- Section key: `SG_UF + CD_MUNICIPIO + NR_ZONA + NR_SECAO`.
 
-## 3. Intended repository structure
+## 3. Repository architecture
 
 ```
 README.md
 requirements.txt
 .gitignore
-.github/
-  workflows/
-    ci.yml
-    validate_rr.yml
+.github/workflows/
+  ci.yml
+  validate_rr.yml
+  national.yml
 scripts/
   download_bu.py
   process_bu.py
   generate_table.py
-data/
-  raw/
-    .gitkeep
-  processed/
-    .gitkeep
-examples/
-  caroebe_rr.md
+data/raw/.gitkeep
+data/processed/.gitkeep
+examples/caroebe_rr.md
 tests/
-  test_generate_table.py
 PROJECT_CONTEXT.md
+AI_CONTINUATION.md
 ```
 
-Raw ZIPs and generated data are ignored by Git. Do not commit the TSE ZIP archives or accidentally commit temporary SQLite files.
+Raw ZIPs and generated data are ignored. Never commit raw TSE ZIPs.
 
-## 4. Pipeline architecture
+## 4. Pipeline
 
 ### Download
 `scripts/download_bu.py`
-- Uses the official TSE CKAN API.
-- Dataset ID: `resultados-2026-boletim-de-urna`.
-- Finds resources named like `<UF> - Boletim de Urna - Primeiro turno`.
-- Downloads the UF ZIP to `data/raw/<UF>/`.
-- Uses streaming download with `tqdm`.
-- Supports `--uf RR`, a specific UF, or `--uf ALL`.
-- Supports `--force`.
+- Uses official TSE CKAN API.
+- Downloads the first-round resource for a selected UF.
+- Streams the ZIP to `data/raw/<UF>/`.
+- Supports one UF or ALL.
 
 ### Processing
 `scripts/process_bu.py`
-- Python/pandas.
-- Reads ZIP-contained CSVs directly with `zipfile`.
-- Uses `sep=";"`, `encoding="latin1"`, `dtype=str`, chunk size 100,000.
-- Filters `CD_CARGO_PERGUNTA == "1"`.
-- Aggregates one row per section using SQLite as a disk-backed intermediate store.
-- Calculates the four requested vote components from `NR_VOTAVEL` and `QT_VOTOS`.
-- Exports per-UF CSV using `;` and `utf-8-sig`.
-- Supports `--download` and `--uf ALL`.
+- Reads ZIP-contained CSV with `sep=";"`, `encoding="latin1"`, `dtype=str`, chunks of 100,000.
+- Filters `CD_CARGO_PERGUNTA == 1`.
+- Uses SQLite as disk-backed aggregation.
+- Derives only requested vote components from `NR_VOTAVEL` and `QT_VOTOS`.
+- Exports one row per section as `; / utf-8-sig`.
+- Explicit aliases exist for known source variants.
 
 ### Consolidation
 `scripts/generate_table.py`
-- Reads per-UF processed CSVs in chunks.
-- Validates chunks.
-- Writes the final consolidated CSV incrementally, avoiding loading all UFs into RAM.
-- Produces a Markdown summary.
+- Reads per-UF outputs in chunks.
+- Uses a disk-backed SQLite key table to detect duplicate section keys across chunks and UFs.
+- Validates UF identity, key completeness, non-negative votes/electorate, requested votes <= turnout, electorate reconciliation, and total formula.
+- Writes the national CSV incrementally.
+- Writes a Markdown summary by UF.
 
-## 5. Current technical state
+## 5. Real-data validation status
 
-The normal CI has been run five times during initial construction:
-- #1 initial structure — failed
-- #2 download pipeline — failed
-- #3 processing pipeline — failed
-- #4 generate table — passed
-- #5 streaming/memory-safe consolidation — passed
+RR end-to-end validation is green. The RR workflow validates:
+- required output schema;
+- non-empty output;
+- RR-only rows;
+- numeric fields;
+- requested presidential votes <= turnout;
+- non-negative electorate/turnout;
+- duplicate section keys;
+- `QT_APTOS = QT_COMPARECIMENTO + QT_ABSTENCOES`;
+- total formula;
+- Caroebe presence.
 
-The failures above were during incremental construction, not evidence that the final architecture is broken.
+Historical real-data failures were fixed:
+1. Derived output columns were incorrectly treated as raw source columns. Fixed by separating `REQUIRED_RAW`.
+2. NumPy scalar values could become SQLite BLOBs. Fixed by converting scalars with `.item()`.
+3. Duplicate requested vote rows could silently interact with additive upsert. Fixed with `vote_rows` keyed by section + requested vote code.
+4. Section metadata inconsistency is now explicitly rejected.
 
-A real end-to-end RR workflow was then added:
-`.github/workflows/validate_rr.yml`
-It downloads RR from TSE, processes it, consolidates it, validates the output and uploads RR artifacts.
+## 6. National workflow
 
-### First real-data failure
+Commit `d573865cc6a3b67f11d499223c9602ed14a23008` added `.github/workflows/national.yml`.
 
-The first RR execution reached the actual TSE CSV and failed with:
+Design:
+- Matrix over all 27 Brazilian UFs.
+- Up to 8 UF jobs in parallel.
+- Each UF runner downloads only its own official first-round ZIP.
+- Raw ZIPs remain ephemeral and are never uploaded.
+- Each UF is processed incrementally and validated before its processed CSV is uploaded.
+- A consolidation job waits for all 27 UF jobs.
+- Consolidation downloads all processed UF artifacts and runs `generate_table.py --uf ALL`.
+- National QC verifies exact 27-UF coverage, global section-key uniqueness, numeric/non-negative values, requested votes <= turnout, electorate reconciliation, and total formula.
+- Final national CSV and Markdown are uploaded as a 30-day artifact.
 
-`ValueError: bweb_1t_RR_051020261403.csv: colunas obrigatórias ausentes: ['TOTAL_VOTOS_PRES', 'VOTOS_BRANCO_PRES', 'VOTOS_FLAVIO_BOLSONARO', 'VOTOS_LULA', 'VOTOS_NULO_PRES']`
+Current national workflow run #1:
+- Run ID: `37640000936`
+- Head: `d573865cc6a3b67f11d499223c9602ed14a23008`
+- Status at checkpoint: queued/in execution.
 
-Root cause: the processor incorrectly treated five **derived output fields** as if they were raw TSE source columns.
+Current CI for the same head was also executing at checkpoint.
 
-### Fix already applied
-
-Commit:
-`9f6391f9f7fa6ef286b1bf738cd07cce0dee606d`
-
-`process_bu.py` now has a separate `REQUIRED_RAW` set. It requires source fields only, while the five vote/output columns are derived during processing.
-
-**Important:** the next action is to inspect the workflow run triggered by this fix. Do not declare RR validated until the workflow is green and its logs confirm actual output.
-
-## 6. Known validated source facts
-
-- TSE publishes the 2026 BU dataset by UF for 1st and 2nd rounds.
-- The resource naming pattern observed for RR is:
-  `bweb_1t_RR_051020261403.zip`
-- The RR ZIP contains:
-  `bweb_1t_RR_051020261403.csv`
-- The real source file uses the expected semicolon-separated BU format sufficiently to reach schema validation.
-- Candidate codes used by this project were checked against TSE's 2026 candidate information: Flávio Bolsonaro = 22; Lula = 13.
-
-## 7. Non-negotiable data rules
+## 7. Non-negotiable integrity rules
 
 1. Never fabricate electoral rows.
-2. Never infer missing sections from another source unless a new explicit requirement authorizes it.
-3. One row represents one section key:
-   `SG_UF + CD_MUNICIPIO + NR_ZONA + NR_SECAO`.
-4. Preserve source metadata from the BU.
-5. Vote counts must originate from raw `NR_VOTAVEL` + `QT_VOTOS`.
-6. Filter presidential contest using `CD_CARGO_PERGUNTA = 1`.
-7. Do not silently accept schema changes. Add explicit aliases and validation.
-8. Do not commit raw TSE ZIPs.
-9. Avoid loading the entire national dataset into memory.
-10. Do not claim the national dataset is complete until all 27 UFs have actually processed successfully.
+2. Never infer missing sections.
+3. Preserve BU metadata.
+4. Vote counts originate from raw `NR_VOTAVEL + QT_VOTOS`.
+5. Presidential filter remains cargo 1.
+6. Do not silently accept schema changes.
+7. Do not commit raw ZIPs.
+8. Do not load the complete national raw dataset into RAM.
+9. Do not claim national completeness until all 27 UFs and consolidation pass.
+10. Do not change the definition of `TOTAL_VOTOS_PRES` without an explicit requirement change.
 
-## 8. Known implementation risks to investigate
+## 8. Remaining work
 
-### A. Duplicate/upsert semantics
-The SQLite implementation currently uses the section key as primary key and adds vote fields on conflict. This was designed to handle chunk/file aggregation, but it must be validated against the actual TSE archive structure.
+1. Monitor national run #1 and inspect every failed job if any.
+2. If all 27 UFs pass, inspect national consolidation logs and artifact.
+3. Generate/validate `examples/caroebe_rr.md` from actual processed data.
+4. Produce/inspect the per-UF QC summary requested for the final audit trail.
+5. Publish/retain the final national CSV artifact; optionally create a release asset if appropriate.
+6. Record the exact TSE resource snapshot and processing date.
+7. Update README, PROJECT_CONTEXT.md and AI_CONTINUATION.md with final status.
 
-**Critical:** if a source archive ever contains duplicated records representing the same BU rather than complementary rows, additive upsert would double-count votes. Before national production, verify that each section/candidate record occurs exactly as expected.
+## 9. Definition of done
 
-### B. Metadata consistency
-The processor takes the first metadata value in each section group. Validate that repeated metadata fields are consistent inside a section.
+The project is complete only when:
+- all 27 UFs process successfully against official TSE first-round data;
+- national consolidation passes;
+- duplicate section keys are ruled out;
+- the final CSV is available as an artifact/release;
+- Caroebe/RR example is based on actual data;
+- README and persistent context document the final validated state.
 
-### C. Complete source schema
-The RR run exposed the first incorrect assumption. Continue using real TSE files to validate every required field before running all UFs.
+## 10. Continuation protocol
 
-### D. Final Markdown
-The current Markdown output is a summary, not necessarily a full Markdown table containing every national section. If the requirement is interpreted as a full Markdown view, redesign this deliberately rather than generating an enormous memory-heavy Markdown file.
-
-### E. Large final CSV
-The complete national CSV may be too large for normal GitHub source storage. Preferred delivery is GitHub Actions artifact and/or GitHub Release asset, while keeping source code and reproducibility in Git.
-
-## 9. Testing requirements
-
-Current CI:
-`.github/workflows/ci.yml`
-- Python 3.12
-- installs `requirements.txt`
-- runs `python -m pytest -q`
-
-Existing tests:
-`tests/test_generate_table.py`
-- valid total passes;
-- incorrect total raises `ValueError`.
-
-Required future tests should include:
-- raw schema validation;
-- candidate-code aggregation;
-- one-section aggregation;
-- duplicate-section behavior;
-- total calculation;
-- encoding/separator;
-- output column order;
-- Caroebe/RR integration validation;
-- no duplicated section keys in final output.
-
-## 10. Exact next steps
-
-### Step 1 — RR re-run
-Inspect the GitHub Actions run triggered by commit `9f6391f`.
-
-If it fails:
-- read the exact error;
-- inspect/validate the real source schema;
-- make the smallest explicit code correction;
-- rerun CI and RR validation.
-
-If it passes:
-- inspect reported RR section count;
-- inspect Caroebe section count;
-- inspect sample rows;
-- inspect vote totals;
-- inspect output artifact.
-
-### Step 2 — strengthen validation
-Before national processing, add automated checks for:
-- duplicate section keys;
-- non-negative vote counts;
-- total formula;
-- metadata consistency;
-- expected UF code;
-- numeric fields;
-- absence of accidental double counting.
-
-### Step 3 — RR example
-Use the real generated RR data to populate/validate `examples/caroebe_rr.md`. Do not hardcode invented values.
-
-### Step 4 — national workflow
-Add a dedicated GitHub Actions workflow for all 27 UFs:
-- download all 27 official 1st-round ZIPs;
-- process incrementally;
-- consolidate incrementally;
-- run validation;
-- upload final CSV + Markdown as artifacts;
-- retain raw ZIPs only in the ephemeral runner.
-
-### Step 5 — national quality control
-Produce a summary per UF:
-- sections processed;
-- municipalities;
-- total requested votes;
-- duplicate count;
-- validation status.
-
-### Step 6 — final delivery
-Only after all UFs pass:
-- publish the national CSV as an artifact/release asset;
-- retain reproducible scripts;
-- document exact source snapshot/resource names and processing date;
-- update README with final validation status.
-
-## 11. Prompt continuation protocol
-
-For any future prompt such as:
-- "continue"
-- "continue from here"
-- "what next?"
-- "execute the next step"
-
-the assistant should:
-1. Read `PROJECT_CONTEXT.md`.
-2. Inspect the current `main` branch and latest GitHub Actions status.
-3. Determine the first unfinished step in section 10.
-4. Perform the next concrete action directly in GitHub when possible.
-5. Do not repeat completed work.
-6. Do not claim success without checking the resulting commit/workflow.
-7. Update this context file whenever an important architectural decision, failure, correction, validation result, or completed milestone changes the project state.
-
-## 12. Current checkpoint
-
-**Checkpoint date:** 2026-10-07
-
-**Last known code correction:** commit `9f6391f9f7fa6ef286b1bf738cd07cce0dee606d`.
-
-**Current blocking task:** validate that correction against the real RR BU file.
-
-**Do not proceed to all 27 UFs until RR end-to-end processing is green.**
+When the user says “continue”:
+1. Read this file.
+2. Inspect current main and latest Actions status.
+3. Identify the first unfinished item above.
+4. Perform the concrete GitHub change/action directly when possible.
+5. Verify the result before claiming success.
+6. Do not repeat completed work.
