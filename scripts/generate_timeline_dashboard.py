@@ -132,7 +132,7 @@ h1{font-size:30px;line-height:1.15;margin:5px 0 8px}h2{font-size:18px;margin:0 0
 label{display:flex;flex-direction:column;gap:5px;font-weight:600;color:#34404b}select{min-width:220px;padding:9px 11px;border:1px solid #cbd4dd;border-radius:8px;background:#fff;font:inherit}
 .kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:16px}.kpi{padding:16px}.kpi .label{color:var(--muted);font-size:12px}.kpi .value{font-size:21px;font-weight:750;margin-top:4px}
 .card{padding:18px;margin-bottom:16px}.chart-wrap{width:100%;overflow:hidden}.chart{width:100%;height:390px}.legend{display:flex;gap:18px;color:var(--muted);font-size:12px;margin-top:8px}
-.note{font-size:12px;color:var(--muted);padding-top:8px}.milestones{display:grid;grid-template-columns:repeat(7,1fr);gap:10px;margin-top:14px}.milestone{border:1px solid var(--line);border-radius:10px;padding:12px;background:#fafbfd}.insights{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:14px}.insight{border:1px solid var(--line);border-radius:10px;padding:14px;background:#fafbfd}.insight .label{font-size:12px;color:var(--muted)}.insight .value{font-size:22px;font-weight:750;margin-top:3px}.insight .context{font-size:12px;color:var(--muted);margin-top:4px}.rank-badge{display:inline-block;padding:3px 7px;border-radius:999px;background:#eef4f8;font-size:12px;font-weight:700}.milestone .pct{font-size:12px;color:var(--muted)}.milestone .time{font-weight:700;margin-top:4px}.table-wrap{overflow:auto;margin-top:14px}.compare{width:100%;border-collapse:collapse;min-width:700px}.compare th,.compare td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}.compare th:first-child,.compare td:first-child{text-align:left}.compare th{font-size:12px;color:var(--muted);font-weight:700}.compare td{font-variant-numeric:tabular-nums}.foot{color:var(--muted);font-size:12px;margin-top:20px}
+.note{font-size:12px;color:var(--muted);padding-top:8px}.milestones{display:grid;grid-template-columns:repeat(7,1fr);gap:10px;margin-top:14px}.milestone{border:1px solid var(--line);border-radius:10px;padding:12px;background:#fafbfd}.insights{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:14px}.ranking{width:100%;height:720px}.insight{border:1px solid var(--line);border-radius:10px;padding:14px;background:#fafbfd}.insight .label{font-size:12px;color:var(--muted)}.insight .value{font-size:22px;font-weight:750;margin-top:3px}.insight .context{font-size:12px;color:var(--muted);margin-top:4px}.rank-badge{display:inline-block;padding:3px 7px;border-radius:999px;background:#eef4f8;font-size:12px;font-weight:700}.milestone .pct{font-size:12px;color:var(--muted)}.milestone .time{font-weight:700;margin-top:4px}.table-wrap{overflow:auto;margin-top:14px}.compare{width:100%;border-collapse:collapse;min-width:700px}.compare th,.compare td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}.compare th:first-child,.compare td:first-child{text-align:left}.compare th{font-size:12px;color:var(--muted);font-weight:700}.compare td{font-variant-numeric:tabular-nums}.foot{color:var(--muted);font-size:12px;margin-top:20px}
 svg text{font-family:inherit;fill:#66727e;font-size:11px}.grid{stroke:#e8edf2}.axis{stroke:#b9c3cc}.curve{fill:none;stroke:var(--accent);stroke-width:2.5}.bar{fill:var(--accent2);opacity:.75}
 @media(max-width:1100px){.kpis{grid-template-columns:repeat(3,1fr)}.milestones{grid-template-columns:repeat(4,1fr)}.insights{grid-template-columns:1fr 1fr}}@media(max-width:900px){.kpis{grid-template-columns:repeat(2,1fr)}.chart{height:320px}}@media(max-width:560px){.wrap{padding:16px}.kpis{grid-template-columns:1fr 1fr}.milestones,.insights{grid-template-columns:1fr 1fr}h1{font-size:24px}}
 </style>
@@ -167,9 +167,15 @@ svg text{font-family:inherit;fill:#66727e;font-size:11px}.grid{stroke:#e8edf2}.a
 <div id="milestones" class="milestones"></div>
 </section>
 <section class="card">
-<h2>Leitura executiva da UF</h2>
-<div class="sub">Posição relativa da UF selecionada frente às 27 UFs. O benchmark usa a mediana nacional das durações observadas, sem comparar horários absolutos entre fusos.</div>
+<h2>Leitura executiva</h2>
+<div class="sub">Posição relativa da unidade selecionada frente às 27 UFs. O benchmark usa a mediana nacional das durações observadas, sem comparar horários absolutos entre fusos.</div>
 <div id="insights" class="insights"></div>
+</section>
+<section class="card">
+<h2>Ranking de velocidade entre UFs</h2>
+<div class="sub">Tempo entre 25% e 95% dos BUs recebidos. Barras menores representam conclusão mais rápida dentro da própria UF; a linha vertical marca a mediana das 27 UFs.</div>
+<div class="chart-wrap"><svg id="ranking" class="ranking" viewBox="0 0 1100 720" preserveAspectRatio="none"></svg></div>
+<div class="legend">Métrica: duração em minutos entre os marcos de 25% e 95%. Não representa horário absoluto.</div>
 </section>
 <section class="card">
 <h2>Comparativo entre UFs</h2>
@@ -202,7 +208,7 @@ function render(){
   ["Último BU",fmtDate(k.last)],["Janela observada",duration(k.duration_min)],
   ["Pico em 5 min",fmtInt(k.peak_count)],["Horário do pico",fmtDate(k.peak_time)]
  ].map(x=>'<div class="card kpi"><div class="label">'+x[0]+'</div><div class="value">'+x[1]+'</div></div>').join("");
- drawLine($("cum"),s,"pct",100,"%");drawBars($("flow"),s);drawMilestones($("milestones"),k.milestones);drawInsights($("insights"),uf,k);drawComparison($("comparison"));
+ drawLine($("cum"),s,"pct",100,"%");drawBars($("flow"),s);drawMilestones($("milestones"),k.milestones);drawInsights($("insights"),uf,k);drawRanking($("ranking"));drawComparison($("comparison"));
 }
 function median(values){const v=values.filter(x=>x!=null).sort((a,b)=>a-b);if(!v.length)return null;const m=Math.floor(v.length/2);return v.length%2?v[m]:(v[m-1]+v[m])/2}
 function drawInsights(container,uf,k){
@@ -222,7 +228,26 @@ function drawInsights(container,uf,k){
   ["Concentração no pico",k.peak_share_pct.toLocaleString("pt-BR",{maximumFractionDigits:2})+"%","Dos BUs recebidos no intervalo de maior fluxo","Pico: "+fmtInt(k.peak_count)]
  ].map(x=>'<div class="insight"><div class="label">'+x[0]+'</div><div class="value">'+x[1]+'</div><div class="context">'+x[2]+'</div><div class="context"><span class="rank-badge">'+x[3]+'</span></div></div>').join("");
 }
-function drawComparison(container){
+function drawRanking(svg){
+ clear(svg);
+ const rows=UFS.map(uf=>({uf,k:DATA.kpis[uf]}))
+  .filter(x=>x.k.duration_25_95_min!=null)
+  .sort((a,b)=>a.k.duration_25_95_min-b.k.duration_25_95_min);
+ if(!rows.length)return;
+ const W=1100,H=720,L=70,R=90,T=24,B=28,rowH=Math.min(24,(H-T-B)/rows.length);
+ const vals=rows.map(x=>x.k.duration_25_95_min),max=Math.max(...vals,1),med=median(vals);
+ const x=v=>L+v/max*(W-L-R);
+ const medX=x(med);
+ svg.append(el("line",{x1:medX,x2:medX,y1:T-4,y2:H-B,class:"axis","stroke-dasharray":"5 4"}));
+ svg.append(el("text",{x:Math.min(medX+6,W-R-80),y:T+10},"Mediana: "+duration(med)));
+ rows.forEach((row,i)=>{
+  const y=T+i*rowH+rowH/2;
+  const width=Math.max(2,x(row.k.duration_25_95_min)-L);
+  svg.append(el("text",{x:L-10,y:y+4,"text-anchor":"end"},row.uf));
+  svg.append(el("rect",{x:L,y:y-rowH*.28,width:width,height:Math.max(6,rowH*.56),class:"bar"}));
+  svg.append(el("text",{x:Math.min(x(row.k.duration_25_95_min)+8,W-R),y:y+4},duration(row.k.duration_25_95_min)));
+ });
+}function drawComparison(container){
  const rows=UFS.map(uf=>({uf,k:DATA.kpis[uf]}))
   .sort((a,b)=>(a.k.duration_25_95_min??Infinity)-(b.k.duration_25_95_min??Infinity));
  container.innerHTML=rows.map(({uf,k})=>'<tr><td><b>'+uf+'</b></td><td>'+durationNullable(k.duration_25_95_min)+'</td><td>'+durationNullable(k.duration_90_100_min)+'</td><td>'+fmtInt(k.peak_count)+'</td><td>'+k.peak_share_pct.toLocaleString("pt-BR",{maximumFractionDigits:2})+'%</td></tr>').join("");
