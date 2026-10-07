@@ -10,29 +10,26 @@
 Repository state plus actual GitHub Actions results. Do not infer success from unit tests alone.
 
 ## Current priority
-The RR end-to-end pipeline is green. The active milestone is the national 27-UF workflow in `.github/workflows/national.yml`.
+The national 27-UF pipeline is validated and green. The next milestone is to preserve the audit trail and then begin the analytical layer without changing the validated data contract.
 
-National workflow design:
-- 27 Brazilian UFs only; exclude ZZ.
-- 1st round.
-- `CD_CARGO_PERGUNTA = 1`.
-- Requested vote codes: 22, 13, 95, 96.
-- Incremental/chunked processing.
-- Raw ZIPs remain ephemeral.
-- Per-UF processed CSV artifacts feed a final national consolidation job.
-- National consolidation uses SQLite-backed global section-key validation.
-- Final artifacts: national CSV and Markdown summary.
-
-## Current checkpoint
-National workflow run #1:
-- Run ID: `37640000936`
+## Validated national checkpoint
+- Workflow run: `37640000936`
+- Attempt: `2`
 - Head: `d573865cc6a3b67f11d499223c9602ed14a23008`
-- The workflow contains 27 matrix jobs plus a consolidation job.
-
-Latest implementation:
-- `298dc8718bd671dfd0a97fd39cb0c440d4c404ce`: strengthened national consolidation validation.
-- `d573865cc6a3b67f11d499223c9602ed14a23008`: national 27-UF workflow.
-- `2bdc5096a4c714a5220462958c39c0bd749a2852`: persistent context updated.
+- Result: success
+- UFs: 27
+- Sections: 497,897
+- Municipalities: 5,571
+- National requested votes: 115,641,794
+- Duplicate section keys: 0
+- Negative rows: 0
+- Total formula failures: 0
+- Votes above turnout: 0
+- Electorate reconciliation failures: 0
+- National artifact ID: `11498063146`
+- Artifact SHA-256: `sha256:9a5d0f5bf056635e895d28b2c20e7c21b05d598c6fa79020ed6e3e7f9bc202cb`
+- Machine-readable audit: `audit/national_qc_2026-10-07.json`
+- Audit commit: `41fa3d2e5a8c2970ce0a8b8d156a04373f8e637d`
 
 ## Integrity rules
 Never:
@@ -48,20 +45,41 @@ Always:
 - validate section uniqueness;
 - validate metadata consistency;
 - validate vote totals;
-- process incrementally.
+- process incrementally;
+- preserve the existing 19-column output contract unless a deliberate versioned change is approved.
 
 ## Continue behavior
 When the user says “continue”:
-1. Inspect the latest national/CI workflow status.
+1. Inspect the latest national/CI workflow status and latest commits.
 2. If a job failed, inspect its exact log and fix the smallest concrete defect.
-3. If all 27 UF jobs pass, inspect national consolidation and artifact.
-4. Then close remaining audit/documentation work.
-5. Verify every resulting commit/workflow before reporting success.
+3. If the national pipeline is green, verify the audit trail and source snapshot.
+4. Then begin the analytical layer using the validated national artifact as immutable input.
+5. Analytical work should be chunked and must not silently alter the source data contract.
+6. Verify every resulting commit/workflow before reporting success.
+
+## Analytical layer guardrails
+The analytical layer may derive measures such as candidate vote differences, shares, turnout, and geographic aggregates, but must explicitly define denominators and preserve the distinction between:
+- requested presidential vote total (22 + 13 + 95 + 96);
+- candidate votes;
+- blank/null votes;
+- electorate and turnout.
+
+Do not reinterpret `TOTAL_VOTOS_PRES` as all presidential candidates unless the project requirements are explicitly changed.
 
 ## Definition of done
+### Data pipeline
 - 27 UFs processed successfully.
 - National consolidation passes.
 - Duplicate section keys ruled out.
 - National CSV artifact available.
 - Caroebe/RR example based on actual data.
 - README and persistent context reflect final validated state.
+
+### Auditability
+- Machine-readable national QC record committed.
+- Exact TSE source resource snapshot recorded before analytical results are treated as reproducible.
+
+### Analysis
+- Analytical scripts consume the validated output without modifying it.
+- Derived metrics have explicit definitions and tests.
+- Analytical outputs are reproducible from the national artifact.
