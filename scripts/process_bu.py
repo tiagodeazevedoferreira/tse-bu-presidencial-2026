@@ -104,7 +104,12 @@ def connect(db_path: Path) -> sqlite3.Connection:
 
 def first(series: pd.Series):
     values = series.dropna()
-    return values.iloc[0] if not values.empty else None
+    if values.empty:
+        return None
+    value = values.iloc[0]
+    # sqlite3 does not natively serialize NumPy scalar integers/floats as
+    # INTEGER/REAL; without conversion they can become BLOB values.
+    return value.item() if hasattr(value, "item") else value
 
 
 def process_csv(zf: zipfile.ZipFile, member: str, conn: sqlite3.Connection) -> None:
