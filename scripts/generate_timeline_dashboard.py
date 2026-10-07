@@ -80,6 +80,13 @@ def prepare_payload(counts: dict[str, dict[str, int]], totals: dict[str, int]) -
             })
 
         stamps = [p["t"] for p in points]
+        milestones = {}
+        for threshold in (25, 50, 75, 90, 95, 99, 100):
+            milestones[str(threshold)] = next(
+                (p["t"] for p in points if p["pct"] >= threshold),
+                None,
+            )
+        peak = max(points, key=lambda p: p["n"]) if points else None
         kpis[uf] = {
             "sections": totals[uf],
             "first": stamps[0] if stamps else None,
@@ -88,6 +95,9 @@ def prepare_payload(counts: dict[str, dict[str, int]], totals: dict[str, int]) -
                 int((pd.Timestamp(stamps[-1]) - pd.Timestamp(stamps[0])).total_seconds() / 60)
                 if len(stamps) > 1 else 0
             ),
+            "peak_count": peak["n"] if peak else 0,
+            "peak_time": peak["t"] if peak else None,
+            "milestones": milestones,
         }
         series[uf] = points
 
@@ -108,11 +118,11 @@ h1{font-size:30px;line-height:1.15;margin:5px 0 8px}h2{font-size:18px;margin:0 0
 .toolbar,.card{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow)}
 .toolbar{padding:14px 16px;display:flex;gap:16px;align-items:end;flex-wrap:wrap;margin-bottom:16px}
 label{display:flex;flex-direction:column;gap:5px;font-weight:600;color:#34404b}select{min-width:220px;padding:9px 11px;border:1px solid #cbd4dd;border-radius:8px;background:#fff;font:inherit}
-.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}.kpi{padding:16px}.kpi .label{color:var(--muted);font-size:12px}.kpi .value{font-size:21px;font-weight:750;margin-top:4px}
+.kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:16px}.kpi{padding:16px}.kpi .label{color:var(--muted);font-size:12px}.kpi .value{font-size:21px;font-weight:750;margin-top:4px}
 .card{padding:18px;margin-bottom:16px}.chart-wrap{width:100%;overflow:hidden}.chart{width:100%;height:390px}.legend{display:flex;gap:18px;color:var(--muted);font-size:12px;margin-top:8px}
-.note{font-size:12px;color:var(--muted);padding-top:8px}.foot{color:var(--muted);font-size:12px;margin-top:20px}
+.note{font-size:12px;color:var(--muted);padding-top:8px}.milestones{display:grid;grid-template-columns:repeat(7,1fr);gap:10px;margin-top:14px}.milestone{border:1px solid var(--line);border-radius:10px;padding:12px;background:#fafbfd}.milestone .pct{font-size:12px;color:var(--muted)}.milestone .time{font-weight:700;margin-top:4px}.foot{color:var(--muted);font-size:12px;margin-top:20px}
 svg text{font-family:inherit;fill:#66727e;font-size:11px}.grid{stroke:#e8edf2}.axis{stroke:#b9c3cc}.curve{fill:none;stroke:var(--accent);stroke-width:2.5}.bar{fill:var(--accent2);opacity:.75}
-@media(max-width:900px){.kpis{grid-template-columns:repeat(2,1fr)}.chart{height:320px}}@media(max-width:560px){.wrap{padding:16px}.kpis{grid-template-columns:1fr 1fr}h1{font-size:24px}}
+@media(max-width:1100px){.kpis{grid-template-columns:repeat(3,1fr)}.milestones{grid-template-columns:repeat(4,1fr)}}@media(max-width:900px){.kpis{grid-template-columns:repeat(2,1fr)}.chart{height:320px}}@media(max-width:560px){.wrap{padding:16px}.kpis{grid-template-columns:1fr 1fr}.milestones{grid-template-columns:repeat(2,1fr)}h1{font-size:24px}}
 </style>
 </head>
 <body>
@@ -139,6 +149,11 @@ svg text{font-family:inherit;fill:#66727e;font-size:11px}.grid{stroke:#e8edf2}.a
 <div class="sub">Quantidade de BUs recebidos em cada bloco de 5 minutos.</div>
 <div class="chart-wrap"><svg id="flow" class="chart" viewBox="0 0 1100 390" preserveAspectRatio="none"></svg></div>
 </section>
+<section class="card">
+<h2>Marcos de conclusão</h2>
+<div class="sub">Primeiro intervalo em que o acumulado atinge cada percentual das seções observadas na UF selecionada.</div>
+<div id="milestones" class="milestones"></div>
+</section>
 <div class="foot">Fonte: Tribunal Superior Eleitoral (TSE), Boletim de Urna 2026. Este painel analisa recebimento de BU; não deve ser interpretado como instante individual de computação da totalização.</div>
 </div>
 <script>
@@ -157,9 +172,13 @@ function render(){
  const uf=$("uf").value,s=DATA.series[uf]||[],k=DATA.kpis[uf];
  $("kpis").innerHTML=[
   ["Seções",fmtInt(k.sections)],["Primeiro BU",fmtDate(k.first)],
-  ["Último BU",fmtDate(k.last)],["Janela observada",duration(k.duration_min)]
+  ["Último BU",fmtDate(k.last)],["Janela observada",duration(k.duration_min)],
+  ["Pico em 5 min",fmtInt(k.peak_count)],["Horário do pico",fmtDate(k.peak_time)]
  ].map(x=>'<div class="card kpi"><div class="label">'+x[0]+'</div><div class="value">'+x[1]+'</div></div>').join("");
- drawLine($("cum"),s,"pct",100,"%");drawBars($("flow"),s);
+ drawLine($("cum"),s,"pct",100,"%");drawBars($("flow"),s);drawMilestones($("milestones"),k.milestones);
+}
+function drawMilestones(container,milestones){
+ container.innerHTML=Object.entries(milestones).map(([pct,t])=>'<div class="milestone"><div class="pct">'+pct+'%</div><div class="time">'+fmtDate(t)+'</div></div>').join("");
 }
 function scales(svg,s,field){
  const W=1100,H=390,L=62,R=18,T=18,B=44;
