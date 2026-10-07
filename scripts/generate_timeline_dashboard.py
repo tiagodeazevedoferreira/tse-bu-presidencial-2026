@@ -86,7 +86,16 @@ def prepare_payload(counts: dict[str, dict[str, int]], totals: dict[str, int]) -
                 (p["t"] for p in points if p["pct"] >= threshold),
                 None,
             )
+        def elapsed_minutes(start: str | None, end: str | None) -> int | None:
+            if not start or not end:
+                return None
+            return int(
+                (pd.Timestamp(end) - pd.Timestamp(start)).total_seconds() / 60
+            )
+
         peak = max(points, key=lambda p: p["n"]) if points else None
+        duration_25_95 = elapsed_minutes(milestones["25"], milestones["95"])
+        duration_90_100 = elapsed_minutes(milestones["90"], milestones["100"])
         kpis[uf] = {
             "sections": totals[uf],
             "first": stamps[0] if stamps else None,
@@ -97,6 +106,9 @@ def prepare_payload(counts: dict[str, dict[str, int]], totals: dict[str, int]) -
             ),
             "peak_count": peak["n"] if peak else 0,
             "peak_time": peak["t"] if peak else None,
+            "peak_share_pct": round(peak["n"] * 100 / totals[uf], 4) if peak else 0,
+            "duration_25_95_min": duration_25_95,
+            "duration_90_100_min": duration_90_100,
             "milestones": milestones,
         }
         series[uf] = points
@@ -120,7 +132,7 @@ h1{font-size:30px;line-height:1.15;margin:5px 0 8px}h2{font-size:18px;margin:0 0
 label{display:flex;flex-direction:column;gap:5px;font-weight:600;color:#34404b}select{min-width:220px;padding:9px 11px;border:1px solid #cbd4dd;border-radius:8px;background:#fff;font:inherit}
 .kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:16px}.kpi{padding:16px}.kpi .label{color:var(--muted);font-size:12px}.kpi .value{font-size:21px;font-weight:750;margin-top:4px}
 .card{padding:18px;margin-bottom:16px}.chart-wrap{width:100%;overflow:hidden}.chart{width:100%;height:390px}.legend{display:flex;gap:18px;color:var(--muted);font-size:12px;margin-top:8px}
-.note{font-size:12px;color:var(--muted);padding-top:8px}.milestones{display:grid;grid-template-columns:repeat(7,1fr);gap:10px;margin-top:14px}.milestone{border:1px solid var(--line);border-radius:10px;padding:12px;background:#fafbfd}.milestone .pct{font-size:12px;color:var(--muted)}.milestone .time{font-weight:700;margin-top:4px}.foot{color:var(--muted);font-size:12px;margin-top:20px}
+.note{font-size:12px;color:var(--muted);padding-top:8px}.milestones{display:grid;grid-template-columns:repeat(7,1fr);gap:10px;margin-top:14px}.milestone{border:1px solid var(--line);border-radius:10px;padding:12px;background:#fafbfd}.milestone .pct{font-size:12px;color:var(--muted)}.milestone .time{font-weight:700;margin-top:4px}.table-wrap{overflow:auto;margin-top:14px}.compare{width:100%;border-collapse:collapse;min-width:700px}.compare th,.compare td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}.compare th:first-child,.compare td:first-child{text-align:left}.compare th{font-size:12px;color:var(--muted);font-weight:700}.compare td{font-variant-numeric:tabular-nums}.foot{color:var(--muted);font-size:12px;margin-top:20px}
 svg text{font-family:inherit;fill:#66727e;font-size:11px}.grid{stroke:#e8edf2}.axis{stroke:#b9c3cc}.curve{fill:none;stroke:var(--accent);stroke-width:2.5}.bar{fill:var(--accent2);opacity:.75}
 @media(max-width:1100px){.kpis{grid-template-columns:repeat(3,1fr)}.milestones{grid-template-columns:repeat(4,1fr)}}@media(max-width:900px){.kpis{grid-template-columns:repeat(2,1fr)}.chart{height:320px}}@media(max-width:560px){.wrap{padding:16px}.kpis{grid-template-columns:1fr 1fr}.milestones{grid-template-columns:repeat(2,1fr)}h1{font-size:24px}}
 </style>
@@ -154,6 +166,16 @@ svg text{font-family:inherit;fill:#66727e;font-size:11px}.grid{stroke:#e8edf2}.a
 <div class="sub">Primeiro intervalo em que o acumulado atinge cada percentual das seções observadas na UF selecionada.</div>
 <div id="milestones" class="milestones"></div>
 </section>
+<section class="card">
+<h2>Comparativo entre UFs</h2>
+<div class="sub">Métricas de duração são calculadas dentro de cada UF e, portanto, não dependem de conversão de fuso horário. A ordenação usa o tempo entre 25% e 95% dos BUs recebidos.</div>
+<div class="table-wrap">
+<table class="compare">
+<thead><tr><th>UF</th><th>25% → 95%</th><th>90% → 100%</th><th>Pico / 5 min</th><th>Participação no pico</th></tr></thead>
+<tbody id="comparison"></tbody>
+</table>
+</div>
+</section>
 <div class="foot">Fonte: Tribunal Superior Eleitoral (TSE), Boletim de Urna 2026. Este painel analisa recebimento de BU; não deve ser interpretado como instante individual de computação da totalização.</div>
 </div>
 <script>
@@ -175,8 +197,14 @@ function render(){
   ["Último BU",fmtDate(k.last)],["Janela observada",duration(k.duration_min)],
   ["Pico em 5 min",fmtInt(k.peak_count)],["Horário do pico",fmtDate(k.peak_time)]
  ].map(x=>'<div class="card kpi"><div class="label">'+x[0]+'</div><div class="value">'+x[1]+'</div></div>').join("");
- drawLine($("cum"),s,"pct",100,"%");drawBars($("flow"),s);drawMilestones($("milestones"),k.milestones);
+ drawLine($("cum"),s,"pct",100,"%");drawBars($("flow"),s);drawMilestones($("milestones"),k.milestones);drawComparison($("comparison"));
 }
+function drawComparison(container){
+ const rows=UFS.map(uf=>({uf,k:DATA.kpis[uf]}))
+  .sort((a,b)=>(a.k.duration_25_95_min??Infinity)-(b.k.duration_25_95_min??Infinity));
+ container.innerHTML=rows.map(({uf,k})=>'<tr><td><b>'+uf+'</b></td><td>'+durationNullable(k.duration_25_95_min)+'</td><td>'+durationNullable(k.duration_90_100_min)+'</td><td>'+fmtInt(k.peak_count)+'</td><td>'+k.peak_share_pct.toLocaleString("pt-BR",{maximumFractionDigits:2})+'%</td></tr>').join("");
+}
+function durationNullable(min){return min==null?"—":duration(min)}
 function drawMilestones(container,milestones){
  container.innerHTML=Object.entries(milestones).map(([pct,t])=>'<div class="milestone"><div class="pct">'+pct+'%</div><div class="time">'+fmtDate(t)+'</div></div>').join("");
 }
