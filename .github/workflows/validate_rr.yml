@@ -81,6 +81,28 @@ jobs:
           if not df["TOTAL_VOTOS_PRES"].eq(expected).all():
               raise SystemExit("TOTAL_VOTOS_PRES validation failed")
 
+          if df[[
+              "VOTOS_FLAVIO_BOLSONARO", "VOTOS_LULA",
+              "VOTOS_BRANCO_PRES", "VOTOS_NULO_PRES",
+          ]].sum(axis=1).gt(
+              pd.to_numeric(df["QT_COMPARECIMENTO"], errors="raise")
+          ).any():
+              raise SystemExit("Requested presidential votes exceed turnout")
+
+          if df[["QT_APTOS", "QT_COMPARECIMENTO", "QT_ABSTENCOES"]].apply(
+              pd.to_numeric, errors="raise"
+          ).lt(0).any().any():
+              raise SystemExit("Negative electorate/turnout value found")
+
+          if df[["CD_MUNICIPIO", "NR_ZONA", "NR_SECAO"]].duplicated().any():
+              raise SystemExit("Duplicate section key found within RR")
+
+          if not pd.to_numeric(df["QT_APTOS"], errors="raise").eq(
+              pd.to_numeric(df["QT_COMPARECIMENTO"], errors="raise")
+              + pd.to_numeric(df["QT_ABSTENCOES"], errors="raise")
+          ).all():
+              raise SystemExit("QT_APTOS != QT_COMPARECIMENTO + QT_ABSTENCOES")
+
           caroebe = df[df["NM_MUNICIPIO"].str.upper() == "CAROEBE"]
           if caroebe.empty:
               raise SystemExit("Caroebe/RR not found in RR output")
