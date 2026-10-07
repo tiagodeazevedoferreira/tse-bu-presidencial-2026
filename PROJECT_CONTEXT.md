@@ -134,9 +134,16 @@ Design:
 Current national workflow run #1:
 - Run ID: `37640000936`
 - Head: `d573865cc6a3b67f11d499223c9602ed14a23008`
-- Status at checkpoint: queued/in execution.
+- Final status: **success**, attempt 2.
+- 27/27 UFs processed and consolidated successfully.
+- National output: **497,897 sections** across **5,571 municipalities**.
+- National requested-vote total: **115,641,794**.
+- Audit checks: 0 duplicate keys, 0 negative rows, 0 total-formula failures, 0 requested-votes-over-turnout, 0 electorate-reconciliation failures.
+- National artifact ID: `11498063146`.
+- Artifact digest: `sha256:9a5d0f5bf056635e895d28b2c20e7c21b05d598c6fa79020ed6e3e7f9bc202cb`.
+- Validated on 2026-10-07.
 
-Current CI for the same head was also executing at checkpoint.
+CI after the final test fix `bbffc0ee17ed683492445f2946ac64832772d6fd` is also green (run `37654500576`).
 
 ## 7. Non-negotiable integrity rules
 
@@ -153,13 +160,10 @@ Current CI for the same head was also executing at checkpoint.
 
 ## 8. Remaining work
 
-1. Monitor national run #1 and inspect every failed job if any.
-2. If all 27 UFs pass, inspect national consolidation logs and artifact.
-3. Generate/validate `examples/caroebe_rr.md` from actual processed data.
-4. Produce/inspect the per-UF QC summary requested for the final audit trail.
-5. Publish/retain the final national CSV artifact; optionally create a release asset if appropriate.
-6. Record the exact TSE resource snapshot and processing date.
-7. Update README, PROJECT_CONTEXT.md and AI_CONTINUATION.md with final status.
+1. Persist a machine-readable per-UF QC summary for the final audit trail.
+2. Record the exact TSE resource snapshot and processing timestamp.
+3. Optionally create a release asset if a long-term public distribution artifact is desired.
+4. Begin the analytical layer only after the data contract remains unchanged.
 
 ## 9. Definition of done
 
