@@ -1,0 +1,32 @@
+{
+  "schema_version": "1.0",
+  "validated_at": "2026-10-07",
+  "workflow_run_id": 37640000936,
+  "workflow_attempt": 2,
+  "head_sha": "d573865cc6a3b67f11d499223c9602ed14a23008",
+  "artifact": {
+    "id": "11498063146",
+    "name": "tse-bu-presidencial-2026-national",
+    "sha256": "9a5d0f5bf056635e895d28b2c20e7c21b05d598c6fa79020ed6e3e7f9bc202cb"
+  },
+  "scope": {
+    "uf_count": 27,
+    "sections": 497897,
+    "municipalities": 5571,
+    "excluded_uf": "ZZ"
+  },
+  "validation": {
+    "duplicate_section_keys": 0,
+    "negative_rows": 0,
+    "total_formula_failures": 0,
+    "votes_above_turnout": 0,
+    "electorate_reconciliation_failures": 0
+  },
+  "national_requested_votes": {
+    "flavio_bolsonaro": 55960603,
+    "lula": 53722151,
+    "branco": 2294982,
+    "nulo": 3664058,
+    "total": 115641794
+  }
+}
