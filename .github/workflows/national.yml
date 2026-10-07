@@ -240,6 +240,9 @@ jobs:
           print(df.groupby("SG_UF")["TOTAL_VOTOS_PRES"].sum().to_string())
           PY
 
+      - name: Generate reception timeline dashboard
+        run: python scripts/generate_timeline_dashboard.py
+
       - name: Upload national artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -247,5 +250,6 @@ jobs:
           path: |
             data/processed/votacao_presidencial_por_secao_2026.csv
             data/processed/votacao_presidencial_por_secao_2026.md
+            data/processed/dashboard_timeline_recebimento_bu_2026.html
           if-no-files-found: error
           retention-days: 30
