@@ -155,6 +155,20 @@ def process_csv(zf: zipfile.ZipFile, member: str, conn: sqlite3.Connection) -> N
                 chunk[col] = pd.to_numeric(chunk[col], errors="coerce")
 
             for key, group in chunk.groupby(SECTION_KEY, dropna=False):
+                metadata_columns = [
+                    "NM_MUNICIPIO", "NR_LOCAL_VOTACAO", "NR_URNA_EFETIVADA",
+                    "QT_APTOS", "QT_COMPARECIMENTO", "QT_ABSTENCOES",
+                    "DT_ABERTURA", "DT_ENCERRAMENTO", "DT_EMISSAO_BU",
+                    "DT_BU_RECEBIDO",
+                ]
+                for column in metadata_columns:
+                    values = group[column].dropna().astype(str).str.strip().unique()
+                    if len(values) > 1:
+                        raise ValueError(
+                            f"{member}: inconsistent {column} for "
+                            f"section={key}"
+                        )
+
                 requested = group[group["NR_VOTAVEL"].isin([22, 13, 95, 96])][
                     SECTION_KEY + ["NR_VOTAVEL", "QT_VOTOS"]
                 ]
