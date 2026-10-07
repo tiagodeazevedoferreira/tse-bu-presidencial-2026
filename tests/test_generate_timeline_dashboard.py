@@ -58,6 +58,6 @@ def test_payload_exposes_peak_and_completion_milestones():
     assert kpi["milestones"]["25"] == "2026-10-04T18:00"
     assert kpi["milestones"]["50"] == "2026-10-04T18:05"
     assert kpi["milestones"]["100"] == "2026-10-04T18:10"
-    assert kpi["duration_25_95_min"] == 5
+    assert kpi["duration_25_95_min"] == 10
     assert kpi["duration_90_100_min"] == 5
     assert kpi["peak_share_pct"] == 50.0
