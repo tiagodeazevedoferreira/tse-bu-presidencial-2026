@@ -57,3 +57,46 @@ def test_processor_derives_vote_columns_from_raw_source(tmp_path):
         assert row == (10, 20, 2, 3)
     finally:
         conn.close()
+
+def test_processor_rejects_duplicate_requested_vote_rows(tmp_path):
+    rows = [
+        ["RR", "001", "CAROEBE", "1", "10", "5", "7", "100", "90", "10",
+         "04/10/2026 07:00:00", "04/10/2026 17:00:00",
+         "04/10/2026 17:10:00", "04/10/2026 18:00:00", "1", "22", "10"],
+    ]
+
+    zip_path = tmp_path / "bweb_1t_RR_test.zip"
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr("bweb_1t_RR_test.csv", _raw_csv(rows))
+
+    conn = connect(tmp_path / "test.sqlite")
+    try:
+        with zipfile.ZipFile(zip_path) as zf:
+            process_csv(zf, "bweb_1t_RR_test.csv", conn)
+            with __import__("pytest").raises(ValueError, match="duplicate requested vote row"):
+                process_csv(zf, "bweb_1t_RR_test.csv", conn)
+    finally:
+        conn.close()
+
+
+def test_processor_rejects_inconsistent_section_metadata(tmp_path):
+    rows = [
+        ["RR", "001", "CAROEBE", "1", "10", "5", "7", "100", "90", "10",
+         "04/10/2026 07:00:00", "04/10/2026 17:00:00",
+         "04/10/2026 17:10:00", "04/10/2026 18:00:00", "1", "22", "10"],
+        ["RR", "001", "CAROEBE", "1", "10", "5", "8", "100", "90", "10",
+         "04/10/2026 07:00:00", "04/10/2026 17:00:00",
+         "04/10/2026 17:10:00", "04/10/2026 18:00:00", "1", "13", "20"],
+    ]
+
+    zip_path = tmp_path / "bweb_1t_RR_test.zip"
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr("bweb_1t_RR_test.csv", _raw_csv(rows))
+
+    conn = connect(tmp_path / "test.sqlite")
+    try:
+        with zipfile.ZipFile(zip_path) as zf:
+            with __import__("pytest").raises(ValueError, match="inconsistent NR_URNA_EFETIVADA"):
+                process_csv(zf, "bweb_1t_RR_test.csv", conn)
+    finally:
+        conn.close()
