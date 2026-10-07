@@ -2,6 +2,7 @@ import sqlite3
 import zipfile
 
 import pandas as pd
+import pytest
 
 from scripts.process_bu import connect, process_csv
 
@@ -73,7 +74,7 @@ def test_processor_rejects_duplicate_requested_vote_rows(tmp_path):
     try:
         with zipfile.ZipFile(zip_path) as zf:
             process_csv(zf, "bweb_1t_RR_test.csv", conn)
-            with __import__("pytest").raises(ValueError, match="duplicate requested vote row"):
+            with pytest.raises(ValueError, match="duplicate requested vote row"):
                 process_csv(zf, "bweb_1t_RR_test.csv", conn)
     finally:
         conn.close()
