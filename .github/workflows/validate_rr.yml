@@ -1,0 +1,101 @@
+name: Validate RR pipeline
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/**"
+      - "tests/**"
+      - "requirements.txt"
+      - ".github/workflows/validate_rr.yml"
+  workflow_dispatch:
+
+jobs:
+  validate-rr:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Download RR BU
+        run: python scripts/download_bu.py --uf RR
+
+      - name: Process RR BU
+        run: python scripts/process_bu.py --uf RR
+
+      - name: Generate consolidated table
+        run: python scripts/generate_table.py --uf RR
+
+      - name: Validate Caroebe example
+        shell: bash
+        run: |
+          python - <<'PY'
+          import pandas as pd
+
+          path = "data/processed/votacao_presidencial_RR_2026.csv"
+          df = pd.read_csv(path, sep=";", encoding="utf-8-sig", dtype=str)
+
+          required = [
+              "SG_UF", "CD_MUNICIPIO", "NM_MUNICIPIO", "NR_ZONA",
+              "NR_SECAO", "NR_LOCAL_VOTACAO", "NR_URNA_EFETIVADA",
+              "QT_APTOS", "QT_COMPARECIMENTO", "QT_ABSTENCOES",
+              "DT_ABERTURA", "DT_ENCERRAMENTO", "DT_EMISSAO_BU",
+              "DT_BU_RECEBIDO", "VOTOS_FLAVIO_BOLSONARO", "VOTOS_LULA",
+              "VOTOS_BRANCO_PRES", "VOTOS_NULO_PRES", "TOTAL_VOTOS_PRES",
+          ]
+          missing = [c for c in required if c not in df.columns]
+          if missing:
+              raise SystemExit(f"Missing columns: {missing}")
+
+          if df.empty:
+              raise SystemExit("RR processed table is empty")
+
+          if (df["SG_UF"] != "RR").any():
+              raise SystemExit("RR output contains non-RR rows")
+
+          numeric = [
+              "VOTOS_FLAVIO_BOLSONARO", "VOTOS_LULA",
+              "VOTOS_BRANCO_PRES", "VOTOS_NULO_PRES",
+              "TOTAL_VOTOS_PRES",
+          ]
+          for col in numeric:
+              df[col] = pd.to_numeric(df[col], errors="raise")
+
+          expected = (
+              df["VOTOS_FLAVIO_BOLSONARO"]
+              + df["VOTOS_LULA"]
+              + df["VOTOS_BRANCO_PRES"]
+              + df["VOTOS_NULO_PRES"]
+          )
+          if not df["TOTAL_VOTOS_PRES"].eq(expected).all():
+              raise SystemExit("TOTAL_VOTOS_PRES validation failed")
+
+          caroebe = df[df["NM_MUNICIPIO"].str.upper() == "CAROEBE"]
+          if caroebe.empty:
+              raise SystemExit("Caroebe/RR not found in RR output")
+
+          print(f"RR sections: {len(df):,}")
+          print(f"Caroebe sections: {len(caroebe):,}")
+          print(caroebe.to_string(index=False))
+          PY
+
+      - name: Upload RR artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: tse-bu-presidencial-2026-rr
+          path: |
+            data/processed/votacao_presidencial_RR_2026.csv
+            data/processed/votacao_presidencial_RR_2026.md
+          if-no-files-found: error
+          retention-days: 14
