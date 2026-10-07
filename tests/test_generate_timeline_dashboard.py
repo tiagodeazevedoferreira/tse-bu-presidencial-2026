@@ -24,7 +24,7 @@ def test_timeline_preserves_section_count_and_bins(tmp_path):
     assert totals["AC"] == 1
     assert totals["BR"] == 3
     assert counts["RR"]["2026-10-04T18:00"] == 2
-    assert counts["RR"]["2026-10-04T18:05"] == 0 or "2026-10-04T18:05" not in counts["RR"]
+    assert "2026-10-04T18:05" not in counts["RR"]
     assert counts["AC"]["2026-10-04T18:05"] == 1
 
 
