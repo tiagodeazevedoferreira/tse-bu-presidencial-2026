@@ -39,3 +39,22 @@ def test_payload_cumulative_percentage_reaches_100():
     payload = prepare_payload(counts, totals)
     assert payload["series"]["RR"][-1]["cum"] == 3
     assert payload["series"]["RR"][-1]["pct"] == 100.0
+
+
+def test_payload_exposes_peak_and_completion_milestones():
+    counts = {
+        "RR": {
+            "2026-10-04T18:00": 1,
+            "2026-10-04T18:05": 2,
+            "2026-10-04T18:10": 1,
+        }
+    }
+    totals = {"RR": 4}
+    payload = prepare_payload(counts, totals)
+    kpi = payload["kpis"]["RR"]
+
+    assert kpi["peak_count"] == 2
+    assert kpi["peak_time"] == "2026-10-04T18:05"
+    assert kpi["milestones"]["25"] == "2026-10-04T18:00"
+    assert kpi["milestones"]["50"] == "2026-10-04T18:05"
+    assert kpi["milestones"]["100"] == "2026-10-04T18:10"
