@@ -174,7 +174,7 @@ The project now includes an analytical dashboard focused on the relationship bet
 
 1. Persist a machine-readable per-UF QC summary for the final audit trail.
 2. Record the exact TSE resource snapshot and processing timestamp.
-3. Validate the new analytical dashboard in the national GitHub Actions run and inspect the published Pages result.
+3. Validate the new analytical dashboard in the national GitHub Actions run and inspect the published Pages result. Latest dashboard generator fix: KPI formatting corrected in commit `95eaba0ede47f5d7a8e9ba876cb15613d25f241a`.
 4. Refine the dashboard only after the emission/reception timing analysis is validated against the national artifact.
 
 ## 10. Definition of done
