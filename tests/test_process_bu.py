@@ -12,7 +12,7 @@ def _raw_csv(rows):
         "SG_UF", "CD_MUNICIPIO", "NM_MUNICIPIO", "NR_ZONA", "NR_SECAO",
         "NR_LOCAL_VOTACAO", "NR_URNA_EFETIVADA", "QT_APTOS",
         "QT_COMPARECIMENTO", "QT_ABSTENCOES", "DT_ABERTURA",
-        "DT_ENCERRAMENTO", "DT_EMISSAO_BU", "HH_EMISSAO_BU", "DT_BU_RECEBIDO", "HH_BU_RECEBIDO",
+        "DT_ENCERRAMENTO", "DT_EMISSAO_BU", "DT_BU_RECEBIDO",
         "CD_CARGO_PERGUNTA", "NR_VOTAVEL", "QT_VOTOS",
     ]
     return pd.DataFrame(rows, columns=columns).to_csv(
@@ -24,7 +24,7 @@ def test_processor_derives_vote_columns_from_raw_source(tmp_path):
     rows = [
         ["RR", "001", "CAROEBE", "1", "10", "5", "7", "100", "90", "10",
          "04/10/2026 07:00:00", "04/10/2026 17:00:00",
-         "04/10/2026 17:10:00", "17:10:00", "04/10/2026 18:00:00", "18:00:00", "1", "22", "10"],
+         "04/10/2026 17:10:00", "04/10/2026 18:00:00", "1", "22", "10"],
         ["RR", "001", "CAROEBE", "1", "10", "5", "7", "100", "90", "10",
          "04/10/2026 07:00:00", "04/10/2026 17:00:00",
          "04/10/2026 17:10:00", "04/10/2026 18:00:00", "1", "13", "20"],
