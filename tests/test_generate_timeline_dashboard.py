@@ -1,97 +1,85 @@
 import pandas as pd
 
-from scripts.generate_timeline_dashboard import build_event_series, build_series, prepare_payload
+from scripts.generate_timeline_dashboard import (
+    build_analysis_data,
+    parse_time_minutes,
+    prepare_analysis_payload,
+)
 
 
 def make_csv(path):
     df = pd.DataFrame({
         "SG_UF": ["RR", "RR", "AC"],
-        "DT_ABERTURA": [
-            "04/10/2026 17:00:00",
-            "04/10/2026 17:01:00",
-            "04/10/2026 17:02:00",
-        ],
+        "CD_MUNICIPIO": ["001", "001", "002"],
+        "NM_MUNICIPIO": ["Boa Vista", "Boa Vista", "Rio Branco"],
+        "NR_SECAO": ["1", "2", "3"],
+        "NR_LOCAL_VOTACAO": ["Escola A", "Escola A", "Escola B"],
         "DT_ENCERRAMENTO": [
-            "04/10/2026 17:30:00",
-            "04/10/2026 17:31:00",
-            "04/10/2026 17:32:00",
+            "04/10/2026 07:11:00",
+            "05/10/2026 07:12:00",
+            "06/10/2026 07:13:00",
         ],
         "DT_EMISSAO_BU": [
-            "04/10/2026 17:40:00",
-            "04/10/2026 17:41:00",
-            "04/10/2026 17:42:00",
+            "04/10/2026 07:20:00",
+            "05/10/2026 07:12:00",
+            "06/10/2026 07:14:00",
         ],
         "DT_BU_RECEBIDO": [
-            "04/10/2026 18:01:00",
-            "04/10/2026 18:04:59",
-            "04/10/2026 18:06:00",
+            "04/10/2026 07:30:00",
+            "05/10/2026 07:12:00",
+            "06/10/2026 07:15:00",
+        ],
+        "VOTOS_FLAVIO_BOLSONARO": ["10", "20", "30"],
+        "VOTOS_LULA": ["5", "8", "15"],
+        "TOTAL_VOTOS_PRES": ["16", "29", "46"],
+        # DT_ABERTURA is deliberately present: it must be ignored.
+        "DT_ABERTURA": [
+            "04/10/2026 01:00:00",
+            "05/10/2026 01:00:00",
+            "06/10/2026 01:00:00",
         ],
     })
     df.to_csv(path, sep=";", index=False, encoding="utf-8-sig")
 
 
-def test_timeline_preserves_section_count_and_bins(tmp_path):
+def test_parse_time_minutes_ignores_date(tmp_path):
+    values = pd.Series(["04/10/2026 07:12:59", "05/11/2030 07:13:01"])
+    parsed = parse_time_minutes(values, "DT_TEST")
+    assert parsed.tolist() == [432, 433]
+
+
+def test_analysis_uses_only_three_event_fields(tmp_path):
     path = tmp_path / "national.csv"
     make_csv(path)
 
-    counts, totals = build_series(path)
-    assert totals["RR"] == 2
-    assert totals["AC"] == 1
-    assert totals["BR"] == 3
-    assert counts["RR"]["2026-10-04T18:00"] == 2
-    assert "2026-10-04T18:05" not in counts["RR"]
-    assert counts["AC"]["2026-10-04T18:05"] == 1
-
-
-def test_payload_cumulative_percentage_reaches_100():
-    counts = {
-        "RR": {
-            "2026-10-04T18:00": 2,
-            "2026-10-04T18:05": 1,
-        }
+    data = build_analysis_data(path)
+    assert set(data["event_counts"]) == {
+        "DT_ENCERRAMENTO", "DT_EMISSAO_BU", "DT_BU_RECEBIDO"
     }
-    totals = {"RR": 3}
-    payload = prepare_payload(counts, totals)
-    assert payload["series"]["RR"][-1]["cum"] == 3
-    assert payload["series"]["RR"][-1]["pct"] == 100.0
+    assert "DT_ABERTURA" not in data["event_counts"]
+    assert data["event_counts"]["DT_ENCERRAMENTO"]["RR"]["431"] == 1
+    assert data["event_counts"]["DT_ENCERRAMENTO"]["RR"]["432"] == 1
+    assert data["event_counts"]["DT_ENCERRAMENTO"]["AC"]["433"] == 1
 
 
-def test_payload_exposes_peak_and_completion_milestones():
-    counts = {
-        "RR": {
-            "2026-10-04T18:00": 1,
-            "2026-10-04T18:05": 2,
-            "2026-10-04T18:10": 1,
-        }
-    }
-    totals = {"RR": 4}
-    payload = prepare_payload(counts, totals)
-    kpi = payload["kpis"]["RR"]
-
-    assert kpi["peak_count"] == 2
-    assert kpi["peak_time"] == "2026-10-04T18:05"
-    assert kpi["milestones"]["25"] == "2026-10-04T18:00"
-    assert kpi["milestones"]["50"] == "2026-10-04T18:05"
-    assert kpi["milestones"]["100"] == "2026-10-04T18:10"
-    assert kpi["duration_25_95_min"] == 10
-    assert kpi["duration_90_100_min"] == 0
-    assert kpi["peak_share_pct"] == 50.0
-
-
-def test_event_timeline_preserves_all_four_event_series(tmp_path):
+def test_payload_contains_municipalities_and_sections(tmp_path):
     path = tmp_path / "national.csv"
     make_csv(path)
 
-    event_counts, event_totals = build_event_series(path)
-    assert set(event_counts) == {
-        "DT_ABERTURA", "DT_ENCERRAMENTO", "DT_EMISSAO_BU", "DT_BU_RECEBIDO"
-    }
-    assert event_totals["DT_ABERTURA"]["RR"] == 2
-    assert event_counts["DT_BU_RECEBIDO"]["RR"]["2026-10-04T18:00"] == 2
+    payload = prepare_analysis_payload(build_analysis_data(path))
+    assert payload["municipalities"]["RR"] == [{"code": "001", "name": "Boa Vista"}]
+    assert len(payload["sections"]) == 3
+    assert payload["sections"][0][0] == "RR"
+    assert payload["sections"][0][4:] == [431, 440, 450, 10, 5, 16]
 
-    counts, totals = build_series(path)
-    payload = prepare_payload(counts, totals, event_counts, event_totals)
-    assert set(payload["events"]) == set(event_counts)
-    for event in event_counts:
-        assert payload["events"][event]["RR"][-1]["pct"] == 100.0
 
+def test_missing_event_timestamp_is_skipped(tmp_path):
+    path = tmp_path / "national.csv"
+    make_csv(path)
+    df = pd.read_csv(path, sep=";", encoding="utf-8-sig", dtype=str)
+    df.loc[1, "DT_EMISSAO_BU"] = ""
+    df.to_csv(path, sep=";", index=False, encoding="utf-8-sig")
+
+    data = build_analysis_data(path)
+    assert "440" not in data["event_counts"]["DT_EMISSAO_BU"]["RR"]
+    assert data["event_counts"]["DT_EMISSAO_BU"]["RR"]["450"] == 0 if "450" in data["event_counts"]["DT_EMISSAO_BU"]["RR"] else True
