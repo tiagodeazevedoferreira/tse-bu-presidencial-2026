@@ -231,7 +231,7 @@ function drawChart(){
  EVENT_ORDER.forEach((field,idx)=>{
    const y0=T+idx*(rowH+gap),yBase=y0+rowH-28;
    svg.append(el("text",{x:8,y:y0+16,"font-size":"14","font-weight":"700",fill:"#17202a"}),LABELS[field]);
-   [0,.5,1].forEach(v=>{const yy=yBase-v*(rowH-48);svg.append(el("line",{x1:L,x2:W-R,y1:yy,y2:yy,class:"grid",stroke:"#e8edf2"}));if(v>0)svg.append(el("text",{x:10,y:yy+4},fmtInt(Math.round(v*maxBinCount(sections,field,bins)))})});
+   [0,.5,1].forEach(v=>{const yy=yBase-v*(rowH-48);svg.append(el("line",{x1:L,x2:W-R,y1:yy,y2:yy,class:"grid",stroke:"#e8edf2"}));if(v>0)svg.append(el("text",{x:10,y:yy+4},fmtInt(Math.round(v*maxBinCount(sections,field,bins)))))});
    const counts=histogram(sections,field,start,end,bins),max=Math.max(...counts.map(b=>b.n),1),barW=plotW/bins;
    counts.forEach(b=>{const bx=x(b.start),bw=Math.max(1,barW-2),by=yBase-b.n/max*(rowH-48),bh=yBase-by,cl=b.start<=c?"before":"after";const rect=el("rect",{x:bx,y:by,width:bw,height:bh,fill:COLORS[cl],opacity:".84",rx:"2"});const tt=el("title",{},timeText(b.start)+"–"+timeText(Math.max(b.start,b.end-1))+" • "+fmtInt(b.n)+" seções");rect.appendChild(tt);svg.append(rect);if(b.n>0)svg.append(el("text",{x:bx+bw/2,y:Math.max(y0+30,by-5),"text-anchor":"middle",fill:"#34404b","font-size":"10","font-weight":"700"},fmtInt(b.n)))}); 
  });
