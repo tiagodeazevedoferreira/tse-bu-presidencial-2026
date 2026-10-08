@@ -83,6 +83,7 @@ Raw ZIPs and generated data are ignored. Never commit raw TSE ZIPs.
 `scripts/process_bu.py`
 - Reads ZIP-contained CSV with `sep=";"`, `encoding="latin1"`, `dtype=str`, chunks of 100,000.
 - Filters `CD_CARGO_PERGUNTA == 1`.
+- The current 2026 source exposes `DT_EMISSAO_BU` and `DT_BU_RECEBIDO` as datetime fields; `HH_EMISSAO_BU` and `HH_BU_RECEBIDO` are derived deterministically from those timestamps for analytical compatibility.
 - Uses SQLite as disk-backed aggregation.
 - Derives only requested vote components from `NR_VOTAVEL` and `QT_VOTOS`.
 - Exports one row per section as `; / utf-8-sig`.
@@ -158,14 +159,25 @@ CI after the final test fix `bbffc0ee17ed683492445f2946ac64832772d6fd` is also g
 9. Do not claim national completeness until all 27 UFs and consolidation pass.
 10. Do not change the definition of `TOTAL_VOTOS_PRES` without an explicit requirement change.
 
-## 8. Remaining work
+## 8. Analytical dashboard
+
+The project now includes an analytical dashboard focused on the relationship between BU emission and reception timing.
+
+- Generator: `scripts/generate_analysis_dashboard.py`.
+- Published file: `data/processed/dashboard_analise_emissao_recebimento_2026.html`.
+- GitHub Pages publishes this analytical dashboard as `pages/index.html` from the national workflow.
+- Cutoff: **04/10/2026 19:12:00**, treated as an analytical/system-monitoring marker because the public real-time apuração display stopped updating at that time. The cutoff is not treated as causal evidence.
+- Main analyses: BU flow emitted vs received; cumulative Flávio/Lula votes by reception time; emission→reception latency distribution; median/mean/P90 latency over time; Pearson correlation between full BU emission and reception timestamps; emission×reception 15-minute matrix; before/after 19:12 comparison; UF and municipality comparison.
+- Correlation is calculated over all valid BUs; scatter visualization is only a deterministic sample for browser performance.
+
+## 9. Remaining work
 
 1. Persist a machine-readable per-UF QC summary for the final audit trail.
 2. Record the exact TSE resource snapshot and processing timestamp.
-3. Optionally create a release asset if a long-term public distribution artifact is desired.
-4. Begin the analytical layer only after the data contract remains unchanged.
+3. Validate the new analytical dashboard in the national GitHub Actions run and inspect the published Pages result.
+4. Refine the dashboard only after the emission/reception timing analysis is validated against the national artifact.
 
-## 9. Definition of done
+## 10. Definition of done
 
 The project is complete only when:
 - all 27 UFs process successfully against official TSE first-round data;
@@ -175,7 +187,7 @@ The project is complete only when:
 - Caroebe/RR example is based on actual data;
 - README and persistent context document the final validated state.
 
-## 10. Continuation protocol
+## 11. Continuation protocol
 
 When the user says “continue”:
 1. Read this file.
