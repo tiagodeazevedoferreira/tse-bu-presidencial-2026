@@ -297,14 +297,14 @@ function render(){
  drawKPIs();drawChart();
 }
 function parseDate(s){return new Date(s+"Z")}
-function range(){
- const all=EVENT_KEYS.flatMap(e=>Object.keys(aggregateAll(e))).sort();
+function range(agg){
+ const all=selectedEvents().flatMap(e=>Object.keys(agg[e]||{})).sort();
  if(!all.length)return [new Date(cutoffDate+"T00:00:00Z"),new Date(cutoffDate+"T23:00:00Z")];
  return [parseDate(all[0]),parseDate(all[all.length-1])];
 }
 function aggregateAll(event){const o={};for(const r of DATA.hours[event]||[]){const a=o[r[2]]||(o[r[2]]={count:0});a.count+=r[3]}return o}
 function drawChart(){
- const svg=$("chart");svg.innerHTML="";const agg=aggregate(),metrics=selectedMetrics(),events=selectedEvents(),[minD,maxD]=range();
+ const svg=$("chart");svg.innerHTML="";const agg=aggregate(),metrics=selectedMetrics(),events=selectedEvents(),[minD,maxD]=range(agg);
  const W=1400,H=650,L=75,R=78,T=42,B=72,pw=W-L-R,ph=H-T-B;
  const points=[];for(const e of events)for(const t of Object.keys(agg[e]||{}))points.push({t,e});
  for(const e of events)for(const t of Object.keys(agg[e]||{}))for(const m of metrics)points.push({t,e,m});
