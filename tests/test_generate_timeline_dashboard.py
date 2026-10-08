@@ -81,5 +81,5 @@ def test_missing_event_timestamp_is_skipped(tmp_path):
     df.to_csv(path, sep=";", index=False, encoding="utf-8-sig")
 
     data = build_analysis_data(path)
-    assert "440" not in data["event_counts"]["DT_EMISSAO_BU"]["RR"]
-    assert data["event_counts"]["DT_EMISSAO_BU"]["RR"]["450"] == 0 if "450" in data["event_counts"]["DT_EMISSAO_BU"]["RR"] else True
+    assert "432" not in data["event_counts"]["DT_EMISSAO_BU"]["RR"]
+    assert data["event_counts"]["DT_EMISSAO_BU"]["RR"]["440"] == 1
