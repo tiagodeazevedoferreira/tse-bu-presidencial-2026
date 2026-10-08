@@ -355,7 +355,7 @@ function renderKPIs(){
  ['Latência mediana até',min(D.pre.lagMedian)],['Latência mediana após',min(D.post.lagMedian)],
  ['Latência P90 até',min(D.pre.lagP90)],['Latência P90 após',min(D.post.lagP90)]
  ];
- document.getElementById('kpis').innerHTML=cards.map(x=>'<div class="kpi"><span>'+x[0]+'</span><b>'+typeof x[1]==='number'?fmt(x[1]):x[1]+'</b></div>').join('');
+ document.getElementById('kpis').innerHTML=cards.map(x=>'<div class="kpi"><span>'+x[0]+'</span><b>'+(typeof x[1]==='number'?fmt(x[1]):x[1])+'</b></div>').join('');
 }
 document.getElementById('integrity').innerHTML=
  '<span class="badge ok">BUs válidas: '+fmt(D.integrity.rowsValid)+'</span>'+
@@ -367,20 +367,20 @@ renderKPIs();
 new Chart(document.getElementById('flow'),{type:'line',data:{labels:labels(D.flow),datasets:[
  {label:'BUs emitidas',data:D.flow.map(x=>x.emitidas),borderWidth:2,tension:.15},
  {label:'BUs recebidas',data:D.flow.map(x=>x.recebidas),borderWidth:2,tension:.15}
-]},options:{...common,scales:{y:{beginAtZero:true,title:{display:true,text:'BUs / 5 min'}},x:{ticks:{maxTicksLimit:18}}}},plugins:[cutPlugin()]});
+]},options:{...common,scales:{y:{beginAtZero:true,title:{display:true,text:'BUs / 5 min'}},x:{ticks:{maxTicksLimit:18}}},plugins:[cutPlugin()]});
 
 new Chart(document.getElementById('votes'),{type:'line',data:{labels:labels(D.timeline),datasets:[
  {label:'Flávio acumulado',data:D.timeline.map(x=>x.flavioAcum),borderWidth:2,tension:.12,yAxisID:'v'},
  {label:'Lula acumulado',data:D.timeline.map(x=>x.lulaAcum),borderWidth:2,tension:.12,yAxisID:'v'},
  {label:'Margem Flávio − Lula',data:D.timeline.map(x=>x.margem),borderWidth:2,borderDash:[6,4],tension:.12,yAxisID:'m'}
-]},options:{...common,scales:{v:{position:'left',title:{display:true,text:'Votos acumulados'}},m:{position:'right',title:{display:true,text:'Margem'},grid:{drawOnChartArea:false}},x:{ticks:{maxTicksLimit:18}}}},plugins:[cutPlugin()]});
+]},options:{...common,scales:{v:{position:'left',title:{display:true,text:'Votos acumulados'}},m:{position:'right',title:{display:true,text:'Margem'},grid:{drawOnChartArea:false}},x:{ticks:{maxTicksLimit:18}}},plugins:[cutPlugin()]});
 
 new Chart(document.getElementById('lag'),{type:'bar',data:{labels:D.lagDistribution.map(x=>x.bucket+' min'),datasets:[{label:'BUs',data:D.lagDistribution.map(x=>x.count)}]},options:{...common,scales:{y:{beginAtZero:true,title:{display:true,text:'BUs'}},x:{title:{display:true,text:'Atraso entre emissão e recebimento'}}}}});
 new Chart(document.getElementById('lagTime'),{type:'line',data:{labels:labels(D.lagTimeline),datasets:[
  {label:'Mediana',data:D.lagTimeline.map(x=>x.mediana),borderWidth:2,tension:.15},
  {label:'P90',data:D.lagTimeline.map(x=>x.p90),borderWidth:2,tension:.15},
  {label:'Média',data:D.lagTimeline.map(x=>x.media),borderWidth:1,borderDash:[4,4],tension:.15}
-]},options:{...common,scales:{y:{beginAtZero:true,title:{display:true,text:'Minutos'}},x:{ticks:{maxTicksLimit:18}}}},plugins:[cutPlugin()]});
+]},options:{...common,scales:{y:{beginAtZero:true,title:{display:true,text:'Minutos'}},x:{ticks:{maxTicksLimit:18}}},plugins:[cutPlugin()]});
 
 document.getElementById('corr').textContent='Pearson = '+D.integrity.correlationPearson;
 new Chart(document.getElementById('scatter'),{type:'scatter',data:{datasets:[{label:'BUs (amostra visual)',data:D.scatter.map(x=>({x:new Date(x.x).getTime(),y:new Date(x.y).getTime()})),pointRadius:2,pointHoverRadius:4}]},options:{...common,scales:{x:{type:'linear',title:{display:true,text:'Emissão'},ticks:{callback:v=>new Date(v).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}},y:{type:'linear',title:{display:true,text:'Recebimento'},ticks:{callback:v=>new Date(v).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}}}}});
