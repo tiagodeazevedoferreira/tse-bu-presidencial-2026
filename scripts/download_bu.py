@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import logging
 import re
+import time
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -24,6 +25,13 @@ UFS = [
 ]
 RAW_DIR = Path("data/raw")
 TIMEOUT = 120
+DOWNLOAD_ATTEMPTS = 4
+DOWNLOAD_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "Accept": "*/*",
+    "Referer": "https://dadosabertos.tse.jus.br/",
+}
 
 
 def resource_url(uf: str) -> str:
@@ -32,22 +40,56 @@ def resource_url(uf: str) -> str:
 
 def download(url: str, destination: Path) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
-    with requests.get(url, stream=True, timeout=TIMEOUT) as response:
-        response.raise_for_status()
-        total = int(response.headers.get("content-length", "0"))
-        with destination.open("wb") as output:
-            with tqdm(
-                total=total or None,
-                unit="B",
-                unit_scale=True,
-                desc=destination.name,
-            ) as progress:
-                for chunk in response.iter_content(
-                    chunk_size=1024 * 1024
-                ):
-                    if chunk:
-                        output.write(chunk)
-                        progress.update(len(chunk))
+
+    last_error: requests.HTTPError | None = None
+    for attempt in range(1, DOWNLOAD_ATTEMPTS + 1):
+        try:
+            with requests.get(
+                url,
+                headers=DOWNLOAD_HEADERS,
+                stream=True,
+                timeout=TIMEOUT,
+            ) as response:
+                if response.status_code == 403 and attempt < DOWNLOAD_ATTEMPTS:
+                    logging.warning(
+                        "Download blocked with HTTP 403 (attempt %s/%s); "
+                        "retrying with backoff",
+                        attempt,
+                        DOWNLOAD_ATTEMPTS,
+                    )
+                    time.sleep(2 ** attempt)
+                    continue
+
+                response.raise_for_status()
+                total = int(response.headers.get("content-length", "0"))
+                with destination.open("wb") as output:
+                    with tqdm(
+                        total=total or None,
+                        unit="B",
+                        unit_scale=True,
+                        desc=destination.name,
+                    ) as progress:
+                        for chunk in response.iter_content(
+                            chunk_size=1024 * 1024
+                        ):
+                            if chunk:
+                                output.write(chunk)
+                                progress.update(len(chunk))
+                return
+        except requests.HTTPError as exc:
+            last_error = exc
+            if attempt == DOWNLOAD_ATTEMPTS:
+                raise
+            logging.warning(
+                "HTTP error during download (attempt %s/%s): %s; retrying",
+                attempt,
+                DOWNLOAD_ATTEMPTS,
+                exc,
+            )
+            time.sleep(2 ** attempt)
+
+    if last_error is not None:
+        raise last_error
 
 
 def main() -> None:
