@@ -344,7 +344,7 @@ const fmt=n=>new Intl.NumberFormat('pt-BR').format(n);
 const pct=n=>n==null?'—':n.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+'%';
 const min=n=>n==null?'—':n.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+' min';
 const common={responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{position:'bottom'}}};
-function cutPlugin(){return{ id:'cutoff', afterDraw(c){const x=c.scales.x;if(!x)return;const px=x.getPixelForValue(CUT);if(px<x.left||px>x.right)return;const ctx=c.ctx;ctx.save();ctx.strokeStyle='#a33b3b';ctx.setLineDash([6,5]);ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(px,c.chartArea.top);ctx.lineTo(px,c.chartArea.bottom);ctx.stroke();ctx.fillStyle='#a33b3b';ctx.font='11px Segoe UI';ctx.fillText('19:12',px+5,c.chartArea.top+14);ctx.restore()}}}
+function cutPlugin(){return{ id:'cutoff', afterDraw(c){const x=c.scales.x;if(!x)return;let px=null;if(c.data.labels){let best=-1,bestd=Infinity;c.data.labels.forEach((v,i)=>{const d=Math.abs(new Date(v).getTime()-CUT.getTime());if(d<bestd){bestd=d;best=i}});if(best>=0)px=x.getPixelForValue(best)}else if(x.getPixelForValue)px=x.getPixelForValue(CUT.getTime());if(px==null||px<x.left||px>x.right)return;const ctx=c.ctx;ctx.save();ctx.strokeStyle='#a33b3b';ctx.setLineDash([6,5]);ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(px,c.chartArea.top);ctx.lineTo(px,c.chartArea.bottom);ctx.stroke();ctx.fillStyle='#a33b3b';ctx.font='11px Segoe UI';ctx.fillText('19:12',px+5,c.chartArea.top+14);ctx.restore()}}}
 function labels(a){return a.map(x=>new Date(x.t).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}))}
 function renderKPIs(){
  const cards=[
@@ -383,7 +383,7 @@ new Chart(document.getElementById('lagTime'),{type:'line',data:{labels:labels(D.
 ]},options:{...common,scales:{y:{beginAtZero:true,title:{display:true,text:'Minutos'}},x:{ticks:{maxTicksLimit:18}}}},plugins:[cutPlugin()]});
 
 document.getElementById('corr').textContent='Pearson = '+D.integrity.correlationPearson;
-new Chart(document.getElementById('scatter'),{type:'scatter',data:{datasets:[{label:'BUs (amostra visual)',data:D.scatter.map(x=>({x:new Date(x.x),y:new Date(x.y)})),pointRadius:2,pointHoverRadius:4}]},options:{...common,scales:{x:{type:'time',time:{unit:'hour'},title:{display:true,text:'Emissão'}},y:{type:'time',time:{unit:'hour'},title:{display:true,text:'Recebimento'}}}},plugins:[cutPlugin()]});
+new Chart(document.getElementById('scatter'),{type:'scatter',data:{datasets:[{label:'BUs (amostra visual)',data:D.scatter.map(x=>({x:new Date(x.x).getTime(),y:new Date(x.y).getTime()})),pointRadius:2,pointHoverRadius:4}]},options:{...common,scales:{x:{type:'linear',title:{display:true,text:'Emissão'},ticks:{callback:v=>new Date(v).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}},y:{type:'linear',title:{display:true,text:'Recebimento'},ticks:{callback:v=>new Date(v).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}}}}});
 
 const times=[...new Set(D.matrix.flatMap(x=>[x.e,x.r]))].sort();
 const map=new Map(D.matrix.map(x=>[x.e+'|'+x.r,x.count]));
