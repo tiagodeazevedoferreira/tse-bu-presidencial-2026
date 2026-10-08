@@ -242,13 +242,13 @@ jobs:
           print(df.groupby("SG_UF")["TOTAL_VOTOS_PRES"].sum().to_string())
           PY
 
-      - name: Generate reception timeline dashboard
-        run: python scripts/generate_timeline_dashboard.py
+      - name: Generate analytical emission-reception dashboard
+        run: python scripts/generate_analysis_dashboard.py
 
       - name: Prepare GitHub Pages site
         run: |
           mkdir -p pages
-          cp data/processed/dashboard_timeline_recebimento_bu_2026.html pages/index.html
+          cp data/processed/dashboard_analise_emissao_recebimento_2026.html pages/index.html
 
       - name: Upload GitHub Pages artifact
         uses: actions/upload-pages-artifact@v3
@@ -262,7 +262,7 @@ jobs:
           path: |
             data/processed/votacao_presidencial_por_secao_2026.csv
             data/processed/votacao_presidencial_por_secao_2026.md
-            data/processed/dashboard_timeline_recebimento_bu_2026.html
+            data/processed/dashboard_analise_emissao_recebimento_2026.html
           if-no-files-found: error
           retention-days: 30
 
