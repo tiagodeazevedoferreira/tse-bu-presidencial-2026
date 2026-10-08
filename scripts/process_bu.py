@@ -37,7 +37,7 @@ REQUIRED_RAW = {
     "SG_UF", "CD_MUNICIPIO", "NM_MUNICIPIO", "NR_ZONA", "NR_SECAO",
     "NR_LOCAL_VOTACAO", "NR_URNA_EFETIVADA", "QT_APTOS",
     "QT_COMPARECIMENTO", "QT_ABSTENCOES", "DT_ABERTURA",
-    "DT_ENCERRAMENTO", "DT_EMISSAO_BU", "HH_EMISSAO_BU", "DT_BU_RECEBIDO", "HH_BU_RECEBIDO",
+    "DT_ENCERRAMENTO", "DT_EMISSAO_BU", "DT_BU_RECEBIDO",
     "CD_CARGO_PERGUNTA", "NR_VOTAVEL", "QT_VOTOS",
 }
 SECTION_KEY = ["SG_UF", "CD_MUNICIPIO", "NR_ZONA", "NR_SECAO"]
@@ -59,6 +59,31 @@ def normalize_headers(df: pd.DataFrame) -> pd.DataFrame:
                     break
     return df.rename(columns=rename)
 
+
+
+def derive_hour_fields(chunk: pd.DataFrame, member: str) -> pd.DataFrame:
+    """Derive BU emission/reception time fields from the TSE datetime fields.
+
+    The current 2026 BU source exposes DT_EMISSAO_BU and DT_BU_RECEBIDO as
+    full datetime fields; HH_* is not a raw column. Keep HH_* in the processed
+    contract because downstream analysis needs the time component, but derive
+    it deterministically from the official datetime values.
+    """
+    for source, target in [
+        ("DT_EMISSAO_BU", "HH_EMISSAO_BU"),
+        ("DT_BU_RECEBIDO", "HH_BU_RECEBIDO"),
+    ]:
+        text = chunk[source].fillna("").astype(str).str.strip()
+        missing = text.eq("") | text.isin(["#NULO", "#NE"])
+        parsed = pd.to_datetime(text.mask(missing), errors="coerce", dayfirst=True)
+        invalid = (~missing) & parsed.isna()
+        if invalid.any():
+            examples = text.loc[invalid].head(5).tolist()
+            raise ValueError(
+                f"{member}: {source} contém timestamp inválido: {examples}"
+            )
+        chunk[target] = parsed.dt.strftime("%H:%M:%S")
+    return chunk
 
 def discover_csv(zips: list[Path]) -> list[tuple[Path, str]]:
     found = []
@@ -140,6 +165,8 @@ def process_csv(zf: zipfile.ZipFile, member: str, conn: sqlite3.Connection) -> N
                 raise ValueError(
                     f"{member}: colunas obrigatórias ausentes: {sorted(missing)}"
                 )
+
+            chunk = derive_hour_fields(chunk, member)
 
             cargo = chunk["CD_CARGO_PERGUNTA"].astype(str).str.strip()
             chunk = chunk[cargo == "1"].copy()
