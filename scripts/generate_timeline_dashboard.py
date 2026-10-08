@@ -19,196 +19,114 @@ DEFAULT_OUTPUT = Path("data/processed/dashboard_timeline_recebimento_bu_2026.htm
 CHUNK_SIZE = 100_000
 BIN_MINUTES = 5
 EVENT_FIELDS = {
-    "DT_ABERTURA": "Abertura",
     "DT_ENCERRAMENTO": "Encerramento",
     "DT_EMISSAO_BU": "Emissão do BU",
     "DT_BU_RECEBIDO": "BU recebido",
 }
+TIME_FIELDS = list(EVENT_FIELDS)
+VOTE_FIELDS = [
+    "VOTOS_FLAVIO_BOLSONARO",
+    "VOTOS_LULA",
+    "TOTAL_VOTOS_PRES",
+]
+SECTION_FIELDS = [
+    "SG_UF", "CD_MUNICIPIO", "NM_MUNICIPIO", "NR_SECAO",
+    "NR_LOCAL_VOTACAO", *TIME_FIELDS, *VOTE_FIELDS,
+]
 
 
-def build_series(path: Path) -> tuple[dict, dict]:
-    counts: dict[str, dict[str, int]] = {uf: {} for uf in UFS}
-    totals = {uf: 0 for uf in UFS}
-
-    for chunk in pd.read_csv(
-        path,
-        sep=";",
-        encoding="utf-8-sig",
-        usecols=["SG_UF", "DT_BU_RECEBIDO"],
-        dtype=str,
-        chunksize=CHUNK_SIZE,
-    ):
-        parsed = pd.to_datetime(
-            chunk["DT_BU_RECEBIDO"],
-            errors="coerce",
-            dayfirst=True,
-        )
-        if parsed.isna().any():
-            bad = chunk.loc[parsed.isna(), "DT_BU_RECEBIDO"].head(5).tolist()
-            raise ValueError(f"DT_BU_RECEBIDO inválido. Exemplos: {bad}")
-
-        bucket = parsed.dt.floor(f"{BIN_MINUTES}min")
-        tmp = pd.DataFrame({"uf": chunk["SG_UF"], "bucket": bucket})
-        grouped = tmp.groupby(["uf", "bucket"], sort=False).size()
-
-        for (uf, stamp), count in grouped.items():
-            if uf not in counts:
-                raise ValueError(f"UF inesperada no nacional: {uf}")
-            key = stamp.strftime("%Y-%m-%dT%H:%M")
-            counts[uf][key] = counts[uf].get(key, 0) + int(count)
-            totals[uf] += int(count)
-
-    all_counts = {uf: counts[uf] for uf in UFS}
-    merged: dict[str, int] = {}
-    for uf in UFS:
-        for stamp, count in counts[uf].items():
-            merged[stamp] = merged.get(stamp, 0) + count
-    all_counts["BR"] = merged
-    totals["BR"] = sum(merged.values())
-    return all_counts, totals
+def parse_time_minutes(series: pd.Series, field: str) -> pd.Series:
+    text = series.fillna("").astype(str).str.strip()
+    parsed = pd.to_datetime(text, errors="coerce", dayfirst=True)
+    invalid = text.ne("") & parsed.isna()
+    if invalid.any():
+        bad = series.loc[invalid].head(5).tolist()
+        raise ValueError(f"{field} inválido. Exemplos: {bad}")
+    result = pd.Series(pd.NA, index=series.index, dtype="Int64")
+    valid = parsed.notna()
+    if valid.any():
+        result.loc[valid] = (
+            parsed.loc[valid].dt.hour * 60 + parsed.loc[valid].dt.minute
+        ).astype("int64")
+    return result
 
 
-def build_event_series(path: Path) -> tuple[dict, dict]:
+def build_analysis_data(path: Path) -> dict:
     event_counts = {
-        event: {uf: {} for uf in UFS}
-        for event in EVENT_FIELDS
+        event: {uf: {} for uf in [*UFS, "BR"]}
+        for event in TIME_FIELDS
     }
-    event_totals = {
-        event: {uf: 0 for uf in UFS}
-        for event in EVENT_FIELDS
-    }
-    usecols = ["SG_UF", *EVENT_FIELDS.keys()]
+    municipalities = {uf: {} for uf in UFS}
+    sections = []
 
+    usecols = ["SG_UF", "CD_MUNICIPIO", "NM_MUNICIPIO", "NR_SECAO",
+               "NR_LOCAL_VOTACAO", *TIME_FIELDS, *VOTE_FIELDS]
     for chunk in pd.read_csv(
-        path,
-        sep=";",
-        encoding="utf-8-sig",
-        usecols=usecols,
-        dtype=str,
-        chunksize=CHUNK_SIZE,
+        path, sep=";", encoding="utf-8-sig", usecols=usecols,
+        dtype=str, chunksize=CHUNK_SIZE,
     ):
-        for event in EVENT_FIELDS:
-            parsed = pd.to_datetime(
-                chunk[event],
-                errors="coerce",
-                dayfirst=True,
-            )
-            invalid = parsed.isna() & chunk[event].notna() & chunk[event].str.strip().ne("")
-            if invalid.any():
-                bad = chunk.loc[invalid, event].head(5).tolist()
-                raise ValueError(f"{event} inválido. Exemplos: {bad}")
+        if not set(chunk["SG_UF"].dropna()).issubset(set(UFS)):
+            bad_ufs = sorted(set(chunk["SG_UF"].dropna()) - set(UFS))
+            raise ValueError(f"UF inesperada no nacional: {bad_ufs}")
 
-            valid = parsed.notna()
+        times = {field: parse_time_minutes(chunk[field], field) for field in TIME_FIELDS}
+        for event, minutes in times.items():
+            valid = minutes.notna()
             if not valid.any():
                 continue
-
-            bucket = parsed.loc[valid].dt.floor(f"{BIN_MINUTES}min")
-            tmp = pd.DataFrame({
+            grouped = pd.DataFrame({
                 "uf": chunk.loc[valid, "SG_UF"],
-                "bucket": bucket,
-            })
-            grouped = tmp.groupby(["uf", "bucket"], sort=False).size()
-            for (uf, stamp), count in grouped.items():
-                if uf not in event_counts[event]:
-                    raise ValueError(f"UF inesperada no nacional: {uf}")
-                key = stamp.strftime("%Y-%m-%dT%H:%M")
-                event_counts[event][uf][key] = (
-                    event_counts[event][uf].get(key, 0) + int(count)
+                "minute": minutes.loc[valid].astype(int),
+            }).groupby(["uf", "minute"]).size()
+            for (uf, minute), count in grouped.items():
+                event_counts[event][uf][str(int(minute))] = (
+                    event_counts[event][uf].get(str(int(minute)), 0) + int(count)
                 )
-                event_totals[event][uf] += int(count)
 
-    for event in EVENT_FIELDS:
+        for uf, group in chunk.groupby("SG_UF", sort=False):
+            if uf not in municipalities:
+                raise ValueError(f"UF inesperada no nacional: {uf}")
+            for code, name in group[["CD_MUNICIPIO", "NM_MUNICIPIO"]].drop_duplicates().itertuples(index=False):
+                if pd.notna(code):
+                    municipalities[uf][str(code)] = "" if pd.isna(name) else str(name)
+
+        for i, row in chunk.iterrows():
+            sections.append([
+                str(row["SG_UF"]),
+                str(row["CD_MUNICIPIO"]),
+                "" if pd.isna(row["NR_SECAO"]) else str(row["NR_SECAO"]),
+                "" if pd.isna(row["NR_LOCAL_VOTACAO"]) else str(row["NR_LOCAL_VOTACAO"]),
+                *[None if pd.isna(times[field].loc[i]) else int(times[field].loc[i]) for field in TIME_FIELDS],
+                int(pd.to_numeric(row["VOTOS_FLAVIO_BOLSONARO"], errors="coerce") or 0),
+                int(pd.to_numeric(row["VOTOS_LULA"], errors="coerce") or 0),
+                int(pd.to_numeric(row["TOTAL_VOTOS_PRES"], errors="coerce") or 0),
+            ])
+
+    for event in TIME_FIELDS:
         merged = {}
         for uf in UFS:
-            for stamp, count in event_counts[event][uf].items():
-                merged[stamp] = merged.get(stamp, 0) + count
+            for minute, count in event_counts[event][uf].items():
+                merged[minute] = merged.get(minute, 0) + count
         event_counts[event]["BR"] = merged
-        event_totals[event]["BR"] = sum(merged.values())
 
-    return event_counts, event_totals
-
-
-def prepare_payload(
-    counts: dict[str, dict[str, int]],
-    totals: dict[str, int],
-    event_counts: dict[str, dict[str, dict[str, int]]] | None = None,
-    event_totals: dict[str, dict[str, int]] | None = None,
-) -> dict:
-    series = {}
-    kpis = {}
-
-    for uf, raw in counts.items():
-        ordered = sorted(raw.items())
-        cumulative = 0
-        points = []
-        for stamp, count in ordered:
-            cumulative += count
-            points.append({
-                "t": stamp,
-                "n": count,
-                "cum": cumulative,
-                "pct": round(cumulative * 100 / totals[uf], 4),
-            })
-
-        stamps = [p["t"] for p in points]
-        milestones = {}
-        for threshold in (25, 50, 75, 90, 95, 99, 100):
-            milestones[str(threshold)] = next(
-                (p["t"] for p in points if p["pct"] >= threshold),
-                None,
-            )
-        def elapsed_minutes(start: str | None, end: str | None) -> int | None:
-            if not start or not end:
-                return None
-            return int(
-                (pd.Timestamp(end) - pd.Timestamp(start)).total_seconds() / 60
-            )
-
-        peak = max(points, key=lambda p: p["n"]) if points else None
-        duration_25_95 = elapsed_minutes(milestones["25"], milestones["95"])
-        duration_90_100 = elapsed_minutes(milestones["90"], milestones["100"])
-        kpis[uf] = {
-            "sections": totals[uf],
-            "first": stamps[0] if stamps else None,
-            "last": stamps[-1] if stamps else None,
-            "duration_min": (
-                int((pd.Timestamp(stamps[-1]) - pd.Timestamp(stamps[0])).total_seconds() / 60)
-                if len(stamps) > 1 else 0
-            ),
-            "peak_count": peak["n"] if peak else 0,
-            "peak_time": peak["t"] if peak else None,
-            "peak_share_pct": round(peak["n"] * 100 / totals[uf], 4) if peak else 0,
-            "duration_25_95_min": duration_25_95,
-            "duration_90_100_min": duration_90_100,
-            "milestones": milestones,
-        }
-        series[uf] = points
-
-    events = {}
-    if event_counts is not None and event_totals is not None:
-        for event, label in EVENT_FIELDS.items():
-            events[event] = {}
-            for uf, raw in event_counts[event].items():
-                ordered = sorted(raw.items())
-                cumulative = 0
-                points = []
-                total = event_totals[event][uf]
-                for stamp, count in ordered:
-                    cumulative += count
-                    points.append({
-                        "t": stamp,
-                        "n": count,
-                        "cum": cumulative,
-                        "pct": round(cumulative * 100 / total, 4),
-                    })
-                events[event][uf] = points
-
+    municipalities_out = {
+        uf: [{"code": code, "name": name}
+             for code, name in sorted(values.items(), key=lambda x: x[1])]
+        for uf, values in municipalities.items()
+    }
     return {
-        "bin_minutes": BIN_MINUTES,
-        "series": series,
-        "events": events,
+        "event_counts": event_counts,
+        "municipalities": municipalities_out,
+        "sections": sections,
+    }
+
+
+def prepare_analysis_payload(data: dict) -> dict:
+    return {
+        "events": data["event_counts"],
         "event_labels": EVENT_FIELDS,
-        "kpis": kpis,
+        "municipalities": data["municipalities"],
+        "sections": data["sections"],
     }
 
 
@@ -217,223 +135,129 @@ HTML_TEMPLATE = r"""<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Linha do tempo — recebimento dos BUs | Eleições 2026</title>
+<title>Análise intradiária dos Boletins de Urna — Eleições 2026</title>
 <style>
-:root{--bg:#f5f7fa;--card:#fff;--ink:#17202a;--muted:#65717e;--line:#dfe5eb;--accent:#1769aa;--accent2:#0f8b8d;--shadow:0 8px 28px rgba(23,32,42,.08)}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 Inter,Segoe UI,Arial,sans-serif}
-.wrap{max-width:1400px;margin:auto;padding:28px}.hero{margin-bottom:22px}.eyebrow{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
-h1{font-size:30px;line-height:1.15;margin:5px 0 8px}h2{font-size:18px;margin:0 0 4px}.sub{color:var(--muted);max-width:900px}
-.toolbar,.card{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow)}
-.toolbar{padding:14px 16px;display:flex;gap:16px;align-items:end;flex-wrap:wrap;margin-bottom:16px}
-label{display:flex;flex-direction:column;gap:5px;font-weight:600;color:#34404b}select{min-width:220px;padding:9px 11px;border:1px solid #cbd4dd;border-radius:8px;background:#fff;font:inherit}
-.kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:16px}.kpi{padding:16px}.kpi .label{color:var(--muted);font-size:12px}.kpi .value{font-size:21px;font-weight:750;margin-top:4px}
-.card{padding:18px;margin-bottom:16px}.chart-wrap{width:100%;overflow:hidden}.chart{width:100%;height:390px}.event-chart{width:100%;height:430px}.legend{display:flex;gap:18px;color:var(--muted);font-size:12px;margin-top:8px;flex-wrap:wrap}.legend-item{display:inline-flex;align-items:center;gap:6px}.legend-line{display:inline-block;width:28px;height:3px;border-radius:2px}
-.note{font-size:12px;color:var(--muted);padding-top:8px}.milestones{display:grid;grid-template-columns:repeat(7,1fr);gap:10px;margin-top:14px}.milestone{border:1px solid var(--line);border-radius:10px;padding:12px;background:#fafbfd}.insights{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:14px}.ranking{width:100%;height:720px}.insight{border:1px solid var(--line);border-radius:10px;padding:14px;background:#fafbfd}.insight .label{font-size:12px;color:var(--muted)}.insight .value{font-size:22px;font-weight:750;margin-top:3px}.insight .context{font-size:12px;color:var(--muted);margin-top:4px}.rank-badge{display:inline-block;padding:3px 7px;border-radius:999px;background:#eef4f8;font-size:12px;font-weight:700}.milestone .pct{font-size:12px;color:var(--muted)}.milestone .time{font-weight:700;margin-top:4px}.table-wrap{overflow:auto;margin-top:14px}.compare{width:100%;border-collapse:collapse;min-width:700px}.compare th,.compare td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}.compare th:first-child,.compare td:first-child{text-align:left}.compare th{font-size:12px;color:var(--muted);font-weight:700}.compare td{font-variant-numeric:tabular-nums}.foot{color:var(--muted);font-size:12px;margin-top:20px}
-svg text{font-family:inherit;fill:#66727e;font-size:11px}.grid{stroke:#e8edf2}.axis{stroke:#b9c3cc}.curve{fill:none;stroke:var(--accent);stroke-width:2.5}.bar{fill:var(--accent2);opacity:.75}
-@media(max-width:1100px){.kpis{grid-template-columns:repeat(3,1fr)}.milestones{grid-template-columns:repeat(4,1fr)}.insights{grid-template-columns:1fr 1fr}}@media(max-width:900px){.kpis{grid-template-columns:repeat(2,1fr)}.chart{height:320px}}@media(max-width:560px){.wrap{padding:16px}.kpis{grid-template-columns:1fr 1fr}.milestones,.insights{grid-template-columns:1fr 1fr}h1{font-size:24px}}
+:root{--bg:#f5f7fa;--card:#fff;--ink:#17202a;--muted:#65717e;--line:#dfe5eb;--shadow:0 8px 28px rgba(23,32,42,.08);--before:#1769aa;--after:#d97706}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 Inter,Segoe UI,Arial,sans-serif}.wrap{max-width:1500px;margin:auto;padding:24px}
+.hero{margin-bottom:18px}.eyebrow{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#1769aa}h1{font-size:29px;line-height:1.15;margin:5px 0 8px}h2{font-size:18px;margin:0 0 5px}.sub,.note{color:var(--muted)}.note{font-size:12px;margin-top:8px}
+.toolbar,.card{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow)}.toolbar{padding:14px 16px;display:flex;gap:14px;align-items:end;flex-wrap:wrap;margin-bottom:16px}.card{padding:18px;margin-bottom:16px}
+label{display:flex;flex-direction:column;gap:5px;font-weight:650;color:#34404b}select,input[type=time]{min-width:210px;padding:9px 11px;border:1px solid #cbd4dd;border-radius:8px;background:#fff;font:inherit}
+.cut{min-width:130px}.controls-note{align-self:center;max-width:560px}.chart-wrap{width:100%;overflow:auto}.main-chart{width:100%;min-width:900px;height:720px}.legend{display:flex;gap:18px;flex-wrap:wrap;color:var(--muted);font-size:12px;margin-top:8px}.legend-item{display:inline-flex;align-items:center;gap:6px}.swatch{width:22px;height:4px;border-radius:2px;display:inline-block}
+.summary,.sections{width:100%;border-collapse:collapse}.table-wrap{overflow:auto;margin-top:12px}.summary{min-width:850px}.sections{min-width:1050px}.summary th,.summary td,.sections th,.sections td{padding:9px 10px;border-bottom:1px solid var(--line);white-space:nowrap}.summary th,.sections th{text-align:left;font-size:12px;color:var(--muted)}.summary td,.sections td{font-variant-numeric:tabular-nums}.num{text-align:right}.side-before{background:#eaf3fa}.side-after{background:#fff3e4}.time-before{color:#1769aa;font-weight:700}.time-after{color:#d97706;font-weight:700}.empty{padding:20px;text-align:center;color:var(--muted)}
+@media(max-width:800px){.wrap{padding:14px}h1{font-size:24px}.main-chart{min-width:760px;height:680px}}
 </style>
 </head>
 <body>
 <div class="wrap">
 <section class="hero">
 <div class="eyebrow">TSE • 1º turno • 2026</div>
-<h1>Linha do tempo de recebimento dos Boletins de Urna</h1>
-<div class="sub">Distribuição temporal dos BUs registrados no campo <b>DT_BU_RECEBIDO</b>. A visão é por UF e usa blocos de 5 minutos para tornar a progressão comparável.</div>
+<h1>Eventos do Boletim de Urna por horário do dia</h1>
+<div class="sub">A análise ignora completamente a data dos campos <b>DT_ENCERRAMENTO</b>, <b>DT_EMISSAO_BU</b> e <b>DT_BU_RECEBIDO</b> e usa somente <b>hh:mm</b>. <b>DT_ABERTURA não participa desta análise.</b></div>
 </section>
 <div class="toolbar">
-<label>Unidade da Federação
-<select id="uf"></select></label>
-<div class="note">“Brasil” mostra o agregado das 27 UFs. O horário é apresentado como registrado na fonte; não é feita conversão de fuso.</div>
+<label>Unidade da Federação<select id="uf"></select></label>
+<label>Município<select id="municipio"></select></label>
+<label class="cut">Horário de corte<input id="cutoff" type="time" value="07:12"></label>
+<label>Início do eixo X<input id="xstart" type="time" value="00:00"></label>
+<label>Fim do eixo X<input id="xend" type="time" value="23:59"></label>
+<div class="controls-note note">Até o corte: <b>hh:mm ≤ corte</b>. Após o corte: <b>hh:mm &gt; corte</b>. O intervalo do eixo X controla o zoom; as faixas do histograma são recalculadas automaticamente.</div>
 </div>
-<div class="kpis" id="kpis"></div>
 <section class="card">
-<h2>Linha do tempo dos eventos do BU</h2>
-<div class="sub">Percentual acumulado de seções ao longo da linha do tempo para abertura, encerramento, emissão do BU e recebimento. O filtro de UF se aplica a todas as quatro linhas.</div>
-<div class="chart-wrap"><svg id="events" class="event-chart" viewBox="0 0 1100 430" preserveAspectRatio="none"></svg></div>
+<h2>Distribuição horária dos três eventos</h2>
+<div class="sub">Um único eixo X compartilhado e três histogramas empilhados. Cada barra mostra o número de seções na faixa e o valor aparece sobre a barra. Passe o cursor sobre uma barra para ver a faixa e as seções.</div>
+<div class="chart-wrap"><svg id="mainChart" class="main-chart" viewBox="0 0 1200 720" preserveAspectRatio="none"></svg></div>
 <div class="legend">
-<span class="legend-item"><span class="legend-line" style="background:#1769aa"></span>Abertura</span>
-<span class="legend-item"><span class="legend-line" style="background:#0f8b8d"></span>Encerramento</span>
-<span class="legend-item"><span class="legend-line" style="background:#8b5cf6"></span>Emissão do BU</span>
-<span class="legend-item"><span class="legend-line" style="background:#d97706"></span>BU recebido</span>
+<span class="legend-item"><span class="swatch" style="background:#1769aa"></span>Até o corte</span>
+<span class="legend-item"><span class="swatch" style="background:#d97706"></span>Após o corte</span>
+<span class="legend-item"><span class="swatch" style="background:#333;height:2px"></span>Linha de corte</span>
 </div>
-<div class="note">A linha representa o acumulado das seções cujo evento ocorreu até cada intervalo de 5 minutos. O horário é apresentado como registrado na fonte; não é feita conversão de fuso.</div>
+<div class="note">A região anterior ao corte é destacada também por fundo, para não depender apenas da cor. A linha tracejada está rotulada com o horário de corte.</div>
 </section>
 <section class="card">
-<h2>Recebimento acumulado</h2>
-<div class="sub">Percentual de seções cujo BU já havia sido recebido até cada intervalo.</div>
-<div class="chart-wrap"><svg id="cum" class="chart" viewBox="0 0 1100 390" preserveAspectRatio="none"></svg></div>
-<div class="legend">Linha = percentual acumulado de BUs recebidos.</div>
+<h2>Resumo por evento e lado do corte</h2>
+<div class="sub">Os votos são agregados das seções que caíram naquele lado do corte para o respectivo evento. A métrica é calculada sobre a soma dos votos, nunca como média das seções.</div>
+<div class="table-wrap"><table class="summary"><thead><tr><th>Campo</th><th>Lado</th><th class="num">Seções</th><th class="num">Votos Flávio</th><th class="num">Votos Lula</th><th class="num">Total de votos</th><th class="num">Métrica</th></tr></thead><tbody id="summaryBody"></tbody></table></div>
 </section>
 <section class="card">
-<h2>Fluxo de recebimento</h2>
-<div class="sub">Quantidade de BUs recebidos em cada bloco de 5 minutos.</div>
-<div class="chart-wrap"><svg id="flow" class="chart" viewBox="0 0 1100 390" preserveAspectRatio="none"></svg></div>
+<h2>Seções</h2>
+<div class="sub">Cada seção entra no lado do corte conforme o horário do campo selecionado. Os três horários são independentes e coloridos por lado do corte.</div>
+<div class="table-wrap"><table class="sections"><thead><tr><th>Seção</th><th>Local</th><th>Encerramento</th><th>Emissão do BU</th><th>BU recebido</th><th class="num">Votos Flávio</th><th class="num">Votos Lula</th><th class="num">Métrica</th></tr></thead><tbody id="sectionsBody"></tbody></table></div>
 </section>
-<section class="card">
-<h2>Marcos de conclusão</h2>
-<div class="sub">Primeiro intervalo em que o acumulado atinge cada percentual das seções observadas na UF selecionada.</div>
-<div id="milestones" class="milestones"></div>
-</section>
-<section class="card">
-<h2>Leitura executiva</h2>
-<div class="sub">Posição relativa da unidade selecionada frente às 27 UFs. O benchmark usa a mediana nacional das durações observadas, sem comparar horários absolutos entre fusos.</div>
-<div id="insights" class="insights"></div>
-</section>
-<section class="card">
-<h2>Ranking de velocidade entre UFs</h2>
-<div class="sub">Tempo entre 25% e 95% dos BUs recebidos. Barras menores representam conclusão mais rápida dentro da própria UF; a linha vertical marca a mediana das 27 UFs.</div>
-<div class="chart-wrap"><svg id="ranking" class="ranking" viewBox="0 0 1100 720" preserveAspectRatio="none"></svg></div>
-<div class="legend">Métrica: duração em minutos entre os marcos de 25% e 95%. Não representa horário absoluto.</div>
-</section>
-<section class="card">
-<h2>Comparativo entre UFs</h2>
-<div class="sub">Métricas de duração são calculadas dentro de cada UF e, portanto, não dependem de conversão de fuso horário. A ordenação usa o tempo entre 25% e 95% dos BUs recebidos.</div>
-<div class="table-wrap">
-<table class="compare">
-<thead><tr><th>UF</th><th>25% → 95%</th><th>90% → 100%</th><th>Pico / 5 min</th><th>Participação no pico</th></tr></thead>
-<tbody id="comparison"></tbody>
-</table>
-</div>
-</section>
-<div class="foot">Fonte: Tribunal Superior Eleitoral (TSE), Boletim de Urna 2026. Este painel analisa recebimento de BU; não deve ser interpretado como instante individual de computação da totalização.</div>
+<div class="foot note">Fonte: Tribunal Superior Eleitoral (TSE), Boletim de Urna 2026. Este painel analisa os horários registrados nos BUs; não representa o instante de totalização individual de votos. Datas são deliberadamente ignoradas nesta análise.</div>
 </div>
 <script>
 const DATA=__DATA__;
 const UFS=__UFS__;
 const $=id=>document.getElementById(id);
 const fmtInt=n=>new Intl.NumberFormat("pt-BR").format(n);
-const fmtDate=s=>s?new Date(s).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):"—";
-function duration(min){return min<60?(min+" min"):(Math.floor(min/60)+"h "+(min%60)+"min")}
+const fmtPct=n=>n==null?"–":n.toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2})+"%";
+const EVENT_ORDER=["DT_ENCERRAMENTO","DT_EMISSAO_BU","DT_BU_RECEBIDO"];
+const COLORS={before:"#1769aa",after:"#d97706"};
+const LABELS=DATA.event_labels;
+function timeText(m){if(m==null)return "—";return String(Math.floor(m/60)).padStart(2,"0")+":"+String(m%60).padStart(2,"0")}
+function cutoff(){return timeMinutes($("cutoff").value)}
+function timeMinutes(s){if(!s)return null;const [h,m]=s.split(":").map(Number);return h*60+m}
+function side(m,c){return m==null?"":(m<=c?"before":"after")}
+function metric(vf,vl){return vf===0?"–":fmtPct((vf-vl)*100/vf)}
 function setup(){
- const sel=$("uf");
- sel.innerHTML='<option value="BR">Brasil</option>'+UFS.map(u=>'<option value="'+u+'">'+u+'</option>').join("");
- sel.value="BR";sel.onchange=render;render();
+ $("uf").innerHTML='<option value="BR">Brasil</option>'+UFS.map(u=>'<option value="'+u+'">'+u+'</option>').join("");
+ $("uf").onchange=()=>{populateMunicipios();render()};
+ ["municipio","cutoff","xstart","xend"].forEach(id=>$(id).addEventListener("change",render));
+ $("uf").value="BR";populateMunicipios();setDefaultZoom();render();
 }
-function render(){
- const uf=$("uf").value,s=DATA.series[uf]||[],k=DATA.kpis[uf];
- $("kpis").innerHTML=[
-  ["Seções",fmtInt(k.sections)],["Primeiro BU",fmtDate(k.first)],
-  ["Último BU",fmtDate(k.last)],["Janela observada",duration(k.duration_min)],
-  ["Pico em 5 min",fmtInt(k.peak_count)],["Horário do pico",fmtDate(k.peak_time)]
- ].map(x=>'<div class="card kpi"><div class="label">'+x[0]+'</div><div class="value">'+x[1]+'</div></div>').join("");
- drawEventTimeline($("events"),uf);drawLine($("cum"),s,"pct",100,"%");drawBars($("flow"),s);drawMilestones($("milestones"),k.milestones);drawInsights($("insights"),uf,k);drawRanking($("ranking"));drawComparison($("comparison"));
+function populateMunicipios(){
+ const uf=$("uf").value, list=uf==="BR"?[]:(DATA.municipalities[uf]||[]);
+ $("municipio").innerHTML='<option value="ALL">Todos</option>'+list.map(x=>'<option value="'+x.code+'">'+escapeHtml(x.name)+" ("+x.code+")</option>").join("");
+ $("municipio").disabled=uf==="BR";
 }
-function median(values){const v=values.filter(x=>x!=null).sort((a,b)=>a-b);if(!v.length)return null;const m=Math.floor(v.length/2);return v.length%2?v[m]:(v[m-1]+v[m])/2}
-function drawInsights(container,uf,k){
- const durations25=UFS.map(u=>DATA.kpis[u].duration_25_95_min);
- const durations90=UFS.map(u=>DATA.kpis[u].duration_90_100_min);
- const valid25=durations25.filter(x=>x!=null);
- const valid90=durations90.filter(x=>x!=null);
- const med25=median(valid25),med90=median(valid90);
- const rank25=1+valid25.filter(x=>x<k.duration_25_95_min).length;
- const rank90=1+valid90.filter(x=>x<k.duration_90_100_min).length;
- const delta25=k.duration_25_95_min!=null&&med25!=null?k.duration_25_95_min-med25:null;
- const delta90=k.duration_90_100_min!=null&&med90!=null?k.duration_90_100_min-med90:null;
- const trend=d=>d==null?"—":(d>0?"acima da mediana":d<0?"abaixo da mediana":"igual à mediana");
- container.innerHTML=[
-  ["25% → 95%",durationNullable(k.duration_25_95_min),"Mediana: "+durationNullable(med25)+" • "+trend(delta25),rank25+"º de "+valid25.length],
-  ["90% → 100%",durationNullable(k.duration_90_100_min),"Mediana: "+durationNullable(med90)+" • "+trend(delta90),rank90+"º de "+valid90.length],
-  ["Concentração no pico",k.peak_share_pct.toLocaleString("pt-BR",{maximumFractionDigits:2})+"%","Dos BUs recebidos no intervalo de maior fluxo","Pico: "+fmtInt(k.peak_count)]
- ].map(x=>'<div class="insight"><div class="label">'+x[0]+'</div><div class="value">'+x[1]+'</div><div class="context">'+x[2]+'</div><div class="context"><span class="rank-badge">'+x[3]+'</span></div></div>').join("");
+function setDefaultZoom(){
+ const vals=EVENT_ORDER.flatMap(e=>Object.values(DATA.events[e]||{}).flatMap(o=>Object.keys(o).map(Number)));
+ if(vals.length){$("xstart").value=timeText(Math.min(...vals));$("xend").value=timeText(Math.max(...vals));}
 }
-function drawRanking(svg){
- clear(svg);
- const rows=UFS.map(uf=>({uf,k:DATA.kpis[uf]}))
-  .filter(x=>x.k.duration_25_95_min!=null)
-  .sort((a,b)=>a.k.duration_25_95_min-b.k.duration_25_95_min);
- if(!rows.length)return;
- const W=1100,H=720,L=70,R=90,T=24,B=28,rowH=Math.min(24,(H-T-B)/rows.length);
- const vals=rows.map(x=>x.k.duration_25_95_min),max=Math.max(...vals,1),med=median(vals);
- const x=v=>L+v/max*(W-L-R);
- const medX=x(med);
- svg.append(el("line",{x1:medX,x2:medX,y1:T-4,y2:H-B,class:"axis","stroke-dasharray":"5 4"}));
- svg.append(el("text",{x:Math.min(medX+6,W-R-80),y:T+10},"Mediana: "+duration(med)));
- rows.forEach((row,i)=>{
-  const y=T+i*rowH+rowH/2;
-  const width=Math.max(2,x(row.k.duration_25_95_min)-L);
-  svg.append(el("text",{x:L-10,y:y+4,"text-anchor":"end"},row.uf));
-  svg.append(el("rect",{x:L,y:y-rowH*.28,width:width,height:Math.max(6,rowH*.56),class:"bar"}));
-  svg.append(el("text",{x:Math.min(x(row.k.duration_25_95_min)+8,W-R),y:y+4},duration(row.k.duration_25_95_min)));
+function selectedSections(){
+ const uf=$("uf").value,mun=$("municipio").value;
+ return DATA.sections.filter(r=>(uf==="BR"||r[0]===uf)&&(mun==="ALL"||r[1]===mun));
+}
+function render(){drawChart();drawSummary();drawSections()}
+function drawChart(){
+ const svg=$("mainChart");clear(svg);const sections=selectedSections(),c=cutoff();
+ let start=timeMinutes($("xstart").value),end=timeMinutes($("xend").value);if(start==null)start=0;if(end==null)end=1439;if(end<=start)end=Math.min(1439,start+1);
+ const W=1200,H=720,L=78,R=28,T=34,B=55,rowH=185,gap=30,plotW=W-L-R;
+ const x=m=>L+(m-start)/(end-start)*plotW;
+ const bins=autoBins(start,end,plotW);
+ svg.append(el("rect",{x:L,y:T,width:Math.max(0,x(Math.min(c,end))-L),height:H-T-B,class:"before-zone",fill:"#1769aa",opacity:".07"}));
+ const cutX=x(c);svg.append(el("line",{x1:cutX,x2:cutX,y1:T-8,y2:H-B,class:"cutline",stroke:"#333","stroke-width":"2","stroke-dasharray":"7 5"}));svg.append(el("rect",{x:Math.max(L,Math.min(cutX-45,W-R-90)),y:6,width:90,height:22,rx:6,fill:"#333"}));svg.append(el("text",{x:Math.max(L+45,Math.min(cutX,W-R-45)),y:21,"text-anchor":"middle",fill:"#fff","font-size":"12","font-weight":"700"}),"Corte "+timeText(c));
+ [0,0.25,0.5,0.75,1].forEach(v=>{const xx=L+v*plotW;svg.append(el("line",{x1:xx,x2:xx,y1:H-B,y2:H-B+5,class:"axis",stroke:"#b9c3cc"}))});
+ EVENT_ORDER.forEach((field,idx)=>{
+   const y0=T+idx*(rowH+gap),yBase=y0+rowH-28;
+   svg.append(el("text",{x:8,y:y0+16,"font-size":"14","font-weight":"700",fill:"#17202a"}),LABELS[field]);
+   [0,.5,1].forEach(v=>{const yy=yBase-v*(rowH-48);svg.append(el("line",{x1:L,x2:W-R,y1:yy,y2:yy,class:"grid",stroke:"#e8edf2"}));if(v>0)svg.append(el("text",{x:10,y:yy+4},fmtInt(Math.round(v*maxBinCount(sections,field,bins)))})});
+   const counts=histogram(sections,field,start,end,bins),max=Math.max(...counts.map(b=>b.n),1),barW=plotW/bins;
+   counts.forEach(b=>{const bx=x(b.start),bw=Math.max(1,barW-2),by=yBase-b.n/max*(rowH-48),bh=yBase-by,cl=b.start<=c?"before":"after";const rect=el("rect",{x:bx,y:by,width:bw,height:bh,fill:COLORS[cl],opacity:".84",rx:"2"});const tt=el("title",{},timeText(b.start)+"–"+timeText(Math.max(b.start,b.end-1))+" • "+fmtInt(b.n)+" seções");rect.appendChild(tt);svg.append(rect);if(b.n>0)svg.append(el("text",{x:bx+bw/2,y:Math.max(y0+30,by-5),"text-anchor":"middle",fill:"#34404b","font-size":"10","font-weight":"700"},fmtInt(b.n)))}); 
  });
-}function drawComparison(container){
- const rows=UFS.map(uf=>({uf,k:DATA.kpis[uf]}))
-  .sort((a,b)=>(a.k.duration_25_95_min??Infinity)-(b.k.duration_25_95_min??Infinity));
- container.innerHTML=rows.map(({uf,k})=>'<tr><td><b>'+uf+'</b></td><td>'+durationNullable(k.duration_25_95_min)+'</td><td>'+durationNullable(k.duration_90_100_min)+'</td><td>'+fmtInt(k.peak_count)+'</td><td>'+k.peak_share_pct.toLocaleString("pt-BR",{maximumFractionDigits:2})+'%</td></tr>').join("");
+ for(let m=start;m<=end;m+=Math.max(1,Math.ceil((end-start)/8))){const xx=x(m);svg.append(el("line",{x1:xx,x2:xx,y1:H-B,y2:H-B+5,class:"axis",stroke:"#b9c3cc"}));svg.append(el("text",{x:xx,y:H-18,"text-anchor":"middle"},timeText(m)))}
+ svg.append(el("line",{x1:L,x2:W-R,y1:H-B,y2:H-B,class:"axis",stroke:"#b9c3cc"}));
 }
-function durationNullable(min){return min==null?"—":duration(min)}
-function drawMilestones(container,milestones){
- container.innerHTML=Object.entries(milestones).map(([pct,t])=>'<div class="milestone"><div class="pct">'+pct+'%</div><div class="time">'+fmtDate(t)+'</div></div>').join("");
+function autoBins(start,end,width){const target=Math.max(8,Math.floor(width/65));return Math.max(1,Math.ceil((end-start)/target))}
+function histogram(rows,field,start,end,bins){const out=Array.from({length:bins},(_,i)=>({start:start+i*(end-start)/bins,end:start+(i+1)*(end-start)/bins,n:0}));const idx=EVENT_ORDER.indexOf(field)+4;rows.forEach(r=>{const m=r[idx];if(m==null||m<start||m>end)return;let i=Math.min(bins-1,Math.floor((m-start)/(end-start)*bins));out[i].n++});return out}
+function maxBinCount(rows,field,bins){return Math.max(1,Math.ceil(rows.length/bins))}
+function drawSummary(){
+ const rows=selectedSections(),c=cutoff(),out=[];
+ EVENT_ORDER.forEach((field,i)=>{["before","after"].forEach(s=>{let n=0,vf=0,vl=0,total=0;rows.forEach(r=>{const m=r[4+i];if(m!=null&&side(m,c)===s){n++;vf+=r[7];vl+=r[8];total+=r[9]}});out.push('<tr class="'+(s==="before"?"side-before":"side-after")+'"><td><b>'+LABELS[field]+'</b></td><td>'+ (s==="before"?"Até o corte":"Após o corte")+'</td><td class="num">'+fmtInt(n)+'</td><td class="num">'+fmtInt(vf)+'</td><td class="num">'+fmtInt(vl)+'</td><td class="num">'+fmtInt(total)+'</td><td class="num">'+metric(vf,vl)+'</td></tr>')})});
+ $("summaryBody").innerHTML=out.join("");
 }
-function scales(svg,s,field){
- const W=1100,H=390,L=62,R=18,T=18,B=44;
- const vals=s.map(p=>p[field]),max=Math.max(...vals,1),minT=new Date(s[0].t).getTime(),maxT=new Date(s[s.length-1].t).getTime();
- return {W,H,L,R,T,B,max,minT,maxT,x:t=>L+(t-minT)/Math.max(maxT-minT,1)*(W-L-R),y:v=>H-B-v/max*(H-T-B)};
+function drawSections(){
+ const rows=selectedSections(),c=cutoff();
+ $("sectionsBody").innerHTML=rows.map(r=>'<tr><td>'+escapeHtml(r[2])+'</td><td>'+escapeHtml(r[3])+'</td>'+[4,5,6].map(i=>'<td class="'+(r[i]==null?"":"time-"+side(r[i],c))+'">'+timeText(r[i])+'</td>').join("")+'<td class="num">'+fmtInt(r[7])+'</td><td class="num">'+fmtInt(r[8])+'</td><td class="num">'+metric(r[7],r[8])+'</td></tr>').join("")||'<tr><td colspan="8" class="empty">Nenhuma seção encontrada para os filtros selecionados.</td></tr>';
 }
+function escapeHtml(v){return String(v).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m]))}
 function clear(svg){svg.innerHTML=""}
-function el(tag,a,text){
- const n=document.createElementNS("http://www.w3.org/2000/svg",tag);
- for(const[k,v]of Object.entries(a||{}))n.setAttribute(k,v);
- if(text!=null)n.textContent=text;return n;
-}
-function drawEventTimeline(svg,uf){
- clear(svg);
- const events=DATA.events||{};
- const fields=Object.keys(events);
- if(!fields.length)return;
- const colors={DT_ABERTURA:"#1769aa",DT_ENCERRAMENTO:"#0f8b8d",DT_EMISSAO_BU:"#8b5cf6",DT_BU_RECEBIDO:"#d97706"};
- const labels=DATA.event_labels||{};
- const all=fields.flatMap(field=>(events[field][uf]||[]));
- if(!all.length)return;
- const W=1100,H=430,L=62,R=22,T=24,B=48;
- const minT=Math.min(...all.map(p=>new Date(p.t).getTime()));
- const maxT=Math.max(...all.map(p=>new Date(p.t).getTime()));
- const x=t=>L+(t-minT)/Math.max(maxT-minT,1)*(W-L-R);
- const y=v=>H-B-v/100*(H-T-B);
- for(let i=0;i<=4;i++){
-  const pct=i*25,yy=y(pct);
-  svg.append(el("line",{x1:L,x2:W-R,y1:yy,y2:yy,class:"grid"}));
-  svg.append(el("text",{x:8,y:yy+4},pct+"%"));
- }
- fields.forEach(field=>{
-  const points=events[field][uf]||[];
-  if(!points.length)return;
-  const pts=points.map(p=>x(new Date(p.t).getTime())+","+y(p.pct)).join(" ");
-  svg.append(el("polyline",{points:pts,fill:"none",stroke:colors[field]||"#1769aa","stroke-width":"2.5"}));
- });
- const step=Math.max(1,Math.floor((maxT-minT)/7/300000));
- const seen=new Set();
- all.sort((a,b)=>a.t.localeCompare(b.t)).forEach(p=>{
-  const stamp=p.t.slice(0,16);
-  if(seen.size>=8 || seen.has(stamp))return;
-  seen.add(stamp);
-  const xx=x(new Date(p.t).getTime());
-  svg.append(el("line",{x1:xx,x2:xx,y1:H-B,y2:H-B+5,class:"axis"}));
-  svg.append(el("text",{x:Math.max(L,Math.min(xx-18,W-R-38)),y:H-12},fmtDate(p.t).slice(11,16)));
- });
-}
-function drawLine(svg,s,field,maxY,suffix){
- clear(svg);if(!s.length)return;const c=scales(svg,s,field);c.max=maxY;
- for(let i=0;i<=4;i++){const y=c.y(i*maxY/4);svg.append(el("line",{x1:c.L,x2:c.W-c.R,y1:y,y2:y,class:"grid"}));svg.append(el("text",{x:8,y:y+4},Math.round(i*maxY/4)+suffix))}
- const pts=s.map(p=>c.x(new Date(p.t).getTime())+","+c.y(p[field])).join(" ");
- svg.append(el("polyline",{points:pts,class:"curve"}));
- const step=Math.max(1,Math.floor(s.length/7));
- for(let i=0;i<s.length;i+=step){const p=s[i],x=c.x(new Date(p.t).getTime());svg.append(el("line",{x1:x,x2:x,y1:c.H-c.B,y2:c.H-c.B+5,class:"axis"}));svg.append(el("text",{x:x-18,y:c.H-12},fmtDate(p.t).slice(11,16)))}
-}
-function drawBars(svg,s){
- clear(svg);if(!s.length)return;const c=scales(svg,s,"n"),max=Math.max(...s.map(p=>p.n),1);c.max=max;
- for(let i=0;i<=4;i++){const y=c.y(i*max/4);svg.append(el("line",{x1:c.L,x2:c.W-c.R,y1:y,y2:y,class:"grid"}));svg.append(el("text",{x:8,y:y+4},fmtInt(Math.round(i*max/4))))}
- const barW=Math.max(1,(c.W-c.L-c.R)/s.length);
- s.forEach(p=>{const x=c.x(new Date(p.t).getTime()),y=c.y(p.n);svg.append(el("rect",{x:x,y:y,width:Math.max(1,barW),height:c.H-c.B-y,class:"bar"}))});
- const step=Math.max(1,Math.floor(s.length/7));
- for(let i=0;i<s.length;i+=step){const p=s[i],x=c.x(new Date(p.t).getTime());svg.append(el("text",{x:x-18,y:c.H-12},fmtDate(p.t).slice(11,16)))}
-}
+function el(tag,a,text){const n=document.createElementNS("http://www.w3.org/2000/svg",tag);for(const[k,v]of Object.entries(a||{}))n.setAttribute(k,v);if(text!=null)n.textContent=text;return n}
 setup();
 </script>
 </body>
 </html>
 """
-
-
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", default=str(INPUT))
@@ -445,15 +269,14 @@ def main() -> None:
     if not path.exists():
         raise SystemExit(f"Input not found: {path}")
 
-    counts, totals = build_series(path)
-    event_counts, event_totals = build_event_series(path)
-    payload = prepare_payload(counts, totals, event_counts, event_totals)
+    data = build_analysis_data(path)
+    payload = prepare_analysis_payload(data)
     output.parent.mkdir(parents=True, exist_ok=True)
     html = HTML_TEMPLATE.replace("__DATA__", json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
     html = html.replace("__UFS__", json.dumps(UFS))
     output.write_text(html, encoding="utf-8")
     print(f"Dashboard: {output}")
-    print(f"Sections: {totals['BR']:,}")
+    print(f"Sections: {len(data['sections']):,}")
     print(f"UFs: {len(UFS)}")
 
 
