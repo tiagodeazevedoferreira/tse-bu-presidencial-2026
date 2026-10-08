@@ -102,7 +102,9 @@ def connect(db_path: Path) -> sqlite3.Connection:
             DT_ABERTURA TEXT,
             DT_ENCERRAMENTO TEXT,
             DT_EMISSAO_BU TEXT,
+            HH_EMISSAO_BU TEXT,
             DT_BU_RECEBIDO TEXT,
+            HH_BU_RECEBIDO TEXT,
             VOTOS_FLAVIO_BOLSONARO INTEGER NOT NULL DEFAULT 0,
             VOTOS_LULA INTEGER NOT NULL DEFAULT 0,
             VOTOS_BRANCO_PRES INTEGER NOT NULL DEFAULT 0,
@@ -220,7 +222,9 @@ def process_csv(zf: zipfile.ZipFile, member: str, conn: sqlite3.Connection) -> N
                     "DT_ABERTURA": first(group["DT_ABERTURA"]),
                     "DT_ENCERRAMENTO": first(group["DT_ENCERRAMENTO"]),
                     "DT_EMISSAO_BU": first(group["DT_EMISSAO_BU"]),
+                    "HH_EMISSAO_BU": first(group["HH_EMISSAO_BU"]),
                     "DT_BU_RECEBIDO": first(group["DT_BU_RECEBIDO"]),
+                    "HH_BU_RECEBIDO": first(group["HH_BU_RECEBIDO"]),
                     "VOTOS_FLAVIO_BOLSONARO": int(
                         group.loc[group["NR_VOTAVEL"] == 22, "QT_VOTOS"].sum()
                     ),
@@ -242,7 +246,8 @@ def process_csv(zf: zipfile.ZipFile, member: str, conn: sqlite3.Connection) -> N
                         :NR_SECAO, :NR_LOCAL_VOTACAO, :NR_URNA_EFETIVADA,
                         :QT_APTOS, :QT_COMPARECIMENTO, :QT_ABSTENCOES,
                         :DT_ABERTURA, :DT_ENCERRAMENTO, :DT_EMISSAO_BU,
-                        :DT_BU_RECEBIDO, :VOTOS_FLAVIO_BOLSONARO,
+                        :HH_EMISSAO_BU, :DT_BU_RECEBIDO, :HH_BU_RECEBIDO,
+                        :VOTOS_FLAVIO_BOLSONARO,
                         :VOTOS_LULA, :VOTOS_BRANCO_PRES, :VOTOS_NULO_PRES
                     )
                     ON CONFLICT(SG_UF, CD_MUNICIPIO, NR_ZONA, NR_SECAO)
@@ -272,8 +277,8 @@ def export_uf(conn: sqlite3.Connection, uf: str) -> Path:
             SG_UF, CD_MUNICIPIO, NM_MUNICIPIO, NR_ZONA, NR_SECAO,
             NR_LOCAL_VOTACAO, NR_URNA_EFETIVADA, QT_APTOS,
             QT_COMPARECIMENTO, QT_ABSTENCOES, DT_ABERTURA,
-            DT_ENCERRAMENTO, DT_EMISSAO_BU, DT_BU_RECEBIDO,
-            VOTOS_FLAVIO_BOLSONARO, VOTOS_LULA, VOTOS_BRANCO_PRES,
+            DT_ENCERRAMENTO, DT_EMISSAO_BU, HH_EMISSAO_BU,
+            DT_BU_RECEBIDO, HH_BU_RECEBIDO, VOTOS_FLAVIO_BOLSONARO, VOTOS_LULA, VOTOS_BRANCO_PRES,
             VOTOS_NULO_PRES,
             VOTOS_FLAVIO_BOLSONARO + VOTOS_LULA
                 + VOTOS_BRANCO_PRES + VOTOS_NULO_PRES
