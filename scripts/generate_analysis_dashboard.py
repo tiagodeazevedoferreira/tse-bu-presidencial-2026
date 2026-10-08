@@ -355,7 +355,7 @@ function renderKPIs(){
  ['Latência mediana até',min(D.pre.lagMedian)],['Latência mediana após',min(D.post.lagMedian)],
  ['Latência P90 até',min(D.pre.lagP90)],['Latência P90 após',min(D.post.lagP90)]
  ];
- document.getElementById('kpis').innerHTML=cards.map(x=>'<div class="kpi"><span>'+x[0]+'</span><b>'+x[1].toLocaleString?fmt(x[1]):x[1]+'</b></div>').join('');
+ document.getElementById('kpis').innerHTML=cards.map(x=>'<div class="kpi"><span>'+x[0]+'</span><b>'+typeof x[1]==='number'?fmt(x[1]):x[1]+'</b></div>').join('');
 }
 document.getElementById('integrity').innerHTML=
  '<span class="badge ok">BUs válidas: '+fmt(D.integrity.rowsValid)+'</span>'+
