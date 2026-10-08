@@ -93,12 +93,20 @@ def build_event_series(path: Path) -> tuple[dict, dict]:
                 errors="coerce",
                 dayfirst=True,
             )
-            if parsed.isna().any():
-                bad = chunk.loc[parsed.isna(), event].head(5).tolist()
+            invalid = parsed.isna() & chunk[event].notna() & chunk[event].str.strip().ne("")
+            if invalid.any():
+                bad = chunk.loc[invalid, event].head(5).tolist()
                 raise ValueError(f"{event} inválido. Exemplos: {bad}")
 
-            bucket = parsed.dt.floor(f"{BIN_MINUTES}min")
-            tmp = pd.DataFrame({"uf": chunk["SG_UF"], "bucket": bucket})
+            valid = parsed.notna()
+            if not valid.any():
+                continue
+
+            bucket = parsed.loc[valid].dt.floor(f"{BIN_MINUTES}min")
+            tmp = pd.DataFrame({
+                "uf": chunk.loc[valid, "SG_UF"],
+                "bucket": bucket,
+            })
             grouped = tmp.groupby(["uf", "bucket"], sort=False).size()
             for (uf, stamp), count in grouped.items():
                 if uf not in event_counts[event]:
