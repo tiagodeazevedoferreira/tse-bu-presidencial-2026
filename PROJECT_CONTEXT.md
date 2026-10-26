@@ -275,3 +275,34 @@ The six displayed final records (sections 0136, 0137, 0139, 0140, 0141, 0142 in 
    If the status column differs, inspect the report headers first with `Get-Content .\\relatorio_piloto_100.csv -TotalCount 3`.
 2. Share the error output, diagnose and retry that section, then reconcile the report, status JSON, checkpoint files, and CSV row coverage. Confirm whether the collector's checkpoint/CSV rebuild behavior is robust on rerun.
 3. Do not scale to all 103,904 listed sections until the single failure is understood and the pilot is audited. The 103,904 count is a configuration listing count, not a verified count of available or validated BUs.
+
+
+### Continuidade atualizada — piloto local de segundo turno (2026-10-26, fim da sessão)
+
+**Diretório local:** `C:\Users\tiago.ferreira\tse-bu-presidencial-2026-segundo-turno`
+
+**Estado confirmado ao encerrar a sessão:**
+- O script local `coletar_piloto_100.py` agora está configurado com `LIMITE = 200` (o nome do arquivo e dos CSVs ainda contém `100`, mas o lote foi ampliado para 200).
+- Antes da alteração, foi criado o backup `coletar_piloto_100.py.pre_lote_200.bak`.
+- `python -m py_compile .\coletar_piloto_100.py` foi executado sem erro após a alteração.
+- O coletor terminou a execução do lote de 200 sem erros registrados.
+- Configuração SP consultada novamente: 645 municípios, 103.904 seções listadas, 248 seções com `nsp` e 103.656 sem `nsp`.
+- Resumo do lote: 200 seções; 196 BUs validados; 4 seções vinculadas; 196 checkpoints existentes; 0 erros registrados.
+- Integridade do relatório: 200 linhas; status `SUCESSO=196`, `SECAO_VINCULADA=4`; validação `OK=196`, `NAO_APLICAVEL=4`.
+- Integridade do CSV de votos: 775 linhas de dados, todas com `validacao=OK`.
+- Os checkpoints existentes foram inspecionados antes da ampliação: 99 arquivos, todos `SUCESSO`, nenhum ilegível. A execução de 200 ampliou o conjunto para 196 checkpoints válidos.
+- Uma seção vinculada identificada no piloto anterior foi Alvinlândia, município 61298, zona 0047, seção 0176, vinculada à principal 0167. A mensagem de diagnóstico apresentou caracteres corrompidos (`Se??o vinculada ? se??o 0167`), indicando problema de codificação textual a corrigir futuramente; a classificação funcional estava correta.
+- Os nomes dos arquivos de saída continuam `resultados_piloto_100.csv` e `relatorio_piloto_100.csv`, apesar do limite agora ser 200. Isso é apenas nomenclatura, mas deve ser decidido antes de novas ampliações para evitar confusão.
+- A execução anterior de 100 seções foi auditada e a seção anteriormente classificada como erro foi reclassificada como vinculada após a análise do campo `nsp`; não contar seções vinculadas como BUs baixados/validados nem copiar seus votos para o CSV.
+
+**Ponto exato para retomar amanhã:**
+1. Não executar outra coleta ainda.
+2. Inspecionar a implementação de `chave_secao`, `salvar_resultados` e `salvar_status` para confirmar unicidade das chaves e reconstrução segura dos CSVs. Comando já preparado:
+   ```powershell
+   Select-String -Path .\coletar_piloto_100.py -Pattern 'def chave_secao|def salvar_resultados|def salvar_status' -Context 0,12
+   ```
+3. Ler os corpos completos dessas funções e avaliar seleção, retomada e reconciliação antes de aumentar o lote. O script sempre escolhe as primeiras `LIMITE` seções da configuração; com 200, os primeiros 100 foram reaproveitados e o lote chegou a 196 BUs válidos + 4 vinculados.
+4. Só depois dessa auditoria decidir se ampliar para 500 é seguro. Não ampliar para coleta estadual integral ainda.
+5. Manter a distinção: 103.904 é o número de seções listadas na configuração, não o número comprovado de BUs disponíveis ou validados.
+
+**Limites da evidência:** a validação atual confirma as regras internas do coletor (decodificação e soma de votos igual ao comparecimento para as linhas marcadas `OK`), mas não constitui auditoria independente do conteúdo publicado pelo TSE nem comprova validação oficial do esquema ASN.1. A coleta estadual continua pendente. Não confundir este fluxo exploratório de segundo turno com o pipeline nacional de primeiro turno já validado neste repositório.
