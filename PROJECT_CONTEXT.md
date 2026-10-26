@@ -254,3 +254,24 @@ Total across this sample: 1,288 votes/turnout; 20 vote rows were written. This v
 - Record failures explicitly; never silently discard failed sections.
 - Do not report statewide completeness based only on the configuration's section count.
 - Candidate names must come from a verified source, not from guesswork.
+
+
+### Pilot of 100 sections — first execution result (2026-10-26)
+
+The user ran local `coletar_piloto_100.py` against the first 100 sections listed in the São Paulo TSE configuration. The displayed terminal output shows successful processing through sections 095–100, and the final summary reports:
+- Sections in batch: 100
+- Sections with validated checkpoints: 99
+- Sections with errors recorded: 1
+- Outputs: `resultados_piloto_100.csv`, `relatorio_piloto_100.csv`, `status_piloto_100.json`
+- Checkpoints: `piloto_100_checkpoint/`
+- Downloaded raw BU files: `dados_bu_piloto_100/`
+
+The six displayed final records (sections 0136, 0137, 0139, 0140, 0141, 0142 in AMÉRICO BRASILIENSE, zone 0239) each show vote sum equal to turnout. The overall summary is 99 validated and one error; the error's section and cause are not yet known because the user has only shared the tail of the terminal output. Do not describe the pilot as fully successful or all 100 sections as validated.
+
+### Immediate next action after the 100-section pilot
+
+1. Inspect the local report to identify the one failed section and its exact error:
+   `Import-Csv .\\relatorio_piloto_100.csv -Delimiter ';' | Where-Object { $_.status -eq 'ERRO' } | Format-List *`
+   If the status column differs, inspect the report headers first with `Get-Content .\\relatorio_piloto_100.csv -TotalCount 3`.
+2. Share the error output, diagnose and retry that section, then reconcile the report, status JSON, checkpoint files, and CSV row coverage. Confirm whether the collector's checkpoint/CSV rebuild behavior is robust on rerun.
+3. Do not scale to all 103,904 listed sections until the single failure is understood and the pilot is audited. The 103,904 count is a configuration listing count, not a verified count of available or validated BUs.
