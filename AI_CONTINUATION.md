@@ -105,3 +105,27 @@ Next action:
 4. Do not begin statewide collection until the single failure is understood and the 100-section pilot is audited. After that, plan a checkpointed, rate-limited run with complete reconciliation and explicit error reporting.
 
 Do not commit local data files or raw BUs. Keep the second-round workstream separate from the first-round output schema and artifacts.
+
+
+## Exact handoff for next session — 2026-10-26
+
+The latest state and all detailed evidence are recorded at the end of `PROJECT_CONTEXT.md`. Continue from that addendum, not from the older “100-section pilot” instructions above; those were superseded by the 200-section run.
+
+Local project: `C:\Users\tiago.ferreira\tse-bu-presidencial-2026-segundo-turno`.
+
+Confirmed latest result:
+- `LIMITE = 200` in local `coletar_piloto_100.py`.
+- Backup exists: `coletar_piloto_100.py.pre_lote_200.bak`.
+- Python compilation passed.
+- 200 sections selected; 196 BU records validated; 4 sections classified `SECAO_VINCULADA`; 196 checkpoints; 0 recorded errors.
+- `relatorio_piloto_100.csv`: 200 rows; 196 `SUCESSO/OK`; 4 `SECAO_VINCULADA/NAO_APLICAVEL`.
+- `resultados_piloto_100.csv`: 775 vote rows, all `OK`.
+- SP configuration: 645 municipalities, 103,904 listed sections, 248 with `nsp`.
+
+**First action tomorrow:** ask the user to run:
+```powershell
+Select-String -Path .\coletar_piloto_100.py -Pattern 'def chave_secao|def salvar_resultados|def salvar_status' -Context 0,12
+```
+Then inspect those functions and verify unique section keys, checkpoint reuse, linked-section exclusion, and output reconstruction. Do not launch another collection yet. Consider the proposed 500-section batch only after this audit; do not start a statewide run. Note that output filenames still say `100` although the limit is 200. The TSE's listed section count is not a verified BU availability count.
+
+The earlier 100-section instructions in this document are historical and superseded by this handoff. Keep the second-round prototype separate from the first-round national pipeline and do not commit local raw BU files or generated local CSVs.
