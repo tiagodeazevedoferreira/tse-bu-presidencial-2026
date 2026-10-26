@@ -196,3 +196,61 @@ When the user says “continue”:
 4. Perform the concrete GitHub change/action directly when possible.
 5. Verify the result before claiming success.
 6. Do not repeat completed work.
+
+
+## 12. Exploratory second-round 2026 BU collection (separate workstream)
+
+This workstream was started locally on 2026-10-26 in:
+`C:\\Users\\tiago.ferreira\\tse-bu-presidencial-2026-segundo-turno`
+
+**Important scope distinction:** the existing national pipeline and its validated artifact above concern the first-round open-data ZIP workflow. The second-round work described here is a separate exploratory collector using the TSE's election-urna file endpoints. Do not reinterpret or replace the validated first-round national dataset with these results.
+
+### Source and configuration discovered
+
+- Election-urna directory: `https://resultados.tse.jus.br/oficial/ele2026/arquivo-urna/3221/`
+- State configuration tested: `https://resultados.tse.jus.br/oficial/ele2026/arquivo-urna/3221/config/sp/sp-p003221-cs.json`
+- The configuration identifies São Paulo (`sp`) and lists 645 municipalities, 779 municipality-zone entries, and 103,904 sections. These are counts from the configuration, not proof that every section has an available or validated BU.
+- The second-round presidential election code observed in decoded BU: `6258`.
+- The auxiliary JSON pattern tested for a section is:
+  `.../dados/sp/{municipio}/{zona}/{secao}/p003221-sp-m{municipio}-z{zona}-s{secao}-aux.json`
+- The auxiliary JSON provides `hashes[]`, each hash's `arq[]`, and the BU file where `tp == "bu"`. The BU URL uses the hash as a directory and the listed filename. Do not assume the hash or filename across sections.
+- A `HEAD` request to the section directory returned 404; this was a directory-path test and does not establish that a BU is missing. The auxiliary JSON is the working discovery method.
+
+### Local prototype and evidence
+
+Files created locally (not assumed to be committed to this repository):
+- `bu_2026.asn1`: ASN.1 schema obtained from a third-party GitHub project; it is not yet verified as an official TSE schema for the second round.
+- `testar_bu.py`, `inspecionar_bu.py`, `identificar_candidatos.py`
+- `exportar_secao.py`: single-section prototype reading `bu-teste.dat`.
+- `coletar_amostra.py`: sample collector for five sections.
+- `coletar_piloto_100.py`: resumable 100-section pilot script created locally; it has **not yet been run or validated**.
+- Local outputs include `resultados_amostra.csv`, `relatorio_amostra.csv`, `resultado_secao_0162.csv`, and downloaded sample BU/VSC files.
+
+The ASN.1 decoder successfully decoded the BU for Motuca (municipality code `61069`), zone `0239`, section `0162`. The decoded BU identified election `6258`, presidential office, candidate codes `13` and `22`, plus blank and null votes. The sample's turnout was 258 and the vote sum was 258.
+
+The sample collector then downloaded and decoded sections `0162`–`0166` in Motuca, zone `0239`. All five were reported as `Totalizado`, and each section's sum of decoded votes equaled its turnout:
+- 0162: 258
+- 0163: 269
+- 0164: 264
+- 0165: 244
+- 0166: 253
+
+Total across this sample: 1,288 votes/turnout; 20 vote rows were written. This validates only this five-section sample, not the whole state or the schema generally.
+
+### Immediate next steps
+
+1. Run the local `coletar_piloto_100.py` script and inspect its output, `status_piloto_100.json`, `resultados_piloto_100.csv`, and `relatorio_piloto_100.csv`.
+2. Audit the pilot script carefully before scaling. Confirm retry behavior, checkpoints, CSV integrity, status reconciliation, and whether failed sections can be retried without corrupting previous outputs.
+3. Confirm the source configuration's election/turn semantics and validate the ASN.1 schema against authoritative second-round TSE documentation or independent known-good decoding.
+4. Resolve candidate codes to candidate names using an official TSE candidate source; do not treat labels like `Candidato codigo 13` as verified names.
+5. Only after the pilot passes, design a controlled statewide run with checkpointing, rate limiting, retries, durable per-section logs, and a final reconciliation of listed, downloaded, decoded, validated, and failed sections.
+6. Keep second-round output in separate paths and clearly label it as a distinct dataset. Do not change the first-round 19-column output contract without an explicit requirement change.
+
+### Integrity constraints for this workstream
+
+- Do not infer missing BUs from section listings.
+- Do not count a section as complete unless its BU is downloaded, decoded, and its vote sum reconciles to turnout.
+- Preserve raw downloaded BUs for reproducibility, while keeping large raw datasets out of Git.
+- Record failures explicitly; never silently discard failed sections.
+- Do not report statewide completeness based only on the configuration's section count.
+- Candidate names must come from a verified source, not from guesswork.
