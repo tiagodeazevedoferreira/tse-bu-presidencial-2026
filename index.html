@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="Dashboard interativo para comparar os votos presidenciais do primeiro e do segundo turno das Eleições 2026 com base nos dados do TSE.">
+<title>Presidencial 2026 — crescimento entre turnos</title>
+<style>
+:root{color-scheme:light;--bg:#f3f5f8;--card:#fff;--ink:#182230;--muted:#647184;--line:#dce3ec;--blue:#2459a9;--red:#b43b43;--green:#16794b;--shadow:0 8px 24px rgba(20,34,55,.06)}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
+.wrap{max-width:1500px;margin:auto;padding:24px}.hero{display:flex;justify-content:space-between;gap:20px;align-items:flex-start;margin-bottom:18px}h1{font-size:clamp(24px,3vw,34px);line-height:1.15;margin:0 0 8px;letter-spacing:-.7px}.subtitle{color:var(--muted);max-width:850px}.tag{display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:99px;padding:6px 10px;background:#fff;color:var(--muted);font-size:12px;white-space:nowrap}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:18px;margin-bottom:16px}.section-title{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 14px;font-size:17px}.filters{display:grid;grid-template-columns:repeat(6,minmax(140px,1fr));gap:12px}.field{display:flex;flex-direction:column;gap:5px;font-weight:650;font-size:12px;color:#465367}select{width:100%;min-width:0;padding:10px;border:1px solid #ccd5e1;border-radius:9px;background:#fff;color:var(--ink);font:inherit;font-size:13px}button{cursor:pointer;border:1px solid var(--line);border-radius:9px;padding:9px 12px;background:#fff;color:var(--ink);font:inherit;font-weight:650}button:hover{background:#f4f7fb}.filter-foot{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:12px;color:var(--muted);font-size:12px}
+.kpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.candidate{border:1px solid var(--line);border-radius:14px;padding:18px;min-width:0}.candidate.lula{border-top:4px solid var(--blue)}.candidate.flavio{border-top:4px solid var(--red)}.candidate-head{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:14px}.candidate-name{font-size:17px;font-weight:800}.partycode{font-size:11px;color:var(--muted);margin-top:2px}.delta{font-size:13px;font-weight:800;border-radius:8px;padding:6px 9px;background:#edf7f1;color:var(--green);white-space:nowrap}.delta.down{background:#fff0f0;color:#a32d36}.delta.neutral{background:#f0f3f7;color:#526074}.numbers{display:grid;grid-template-columns:1fr 1fr;gap:12px}.num-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}.num-value{font-size:clamp(22px,2.6vw,34px);font-weight:850;letter-spacing:-.8px;font-variant-numeric:tabular-nums;line-height:1.25;margin-top:2px;overflow-wrap:anywhere}.num-sub{font-size:12px;color:var(--muted);margin-top:4px}.share-row{display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--muted);margin-top:15px}.share-track{display:flex;gap:4px;margin-top:7px}.share-track span{height:7px;border-radius:8px;display:block}.share1{background:#9db7e0}.share2{background:var(--blue)}.flavio .share1{background:#e8b0b3}.flavio .share2{background:var(--red)}
+.context-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.context-kpi{background:#f8fafc;border:1px solid var(--line);border-radius:11px;padding:12px}.context-kpi .label{font-size:11px;color:var(--muted)}.context-kpi .value{font-size:20px;font-weight:800;font-variant-numeric:tabular-nums;margin-top:3px}
+.chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.chartbox{border:1px solid var(--line);border-radius:12px;padding:14px;min-width:0}.chartbox h3{margin:0 0 12px;font-size:14px}.bar-row{display:grid;grid-template-columns:100px 1fr 82px;gap:10px;align-items:center;margin:12px 0}.bar-label{font-weight:650;font-size:12px}.bar-stack{display:flex;flex-direction:column;gap:5px}.bar{height:12px;border-radius:3px;min-width:0}.bar.t1{opacity:.42}.bar.t2{opacity:1}.bar-value{text-align:right;font-size:12px;font-variant-numeric:tabular-nums}.legend{display:flex;gap:14px;flex-wrap:wrap;color:var(--muted);font-size:11px;margin-top:12px}.legend i{display:inline-block;width:13px;height:8px;border-radius:2px;margin-right:5px}
+.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;min-width:960px}th,td{padding:10px 11px;border-bottom:1px solid var(--line);white-space:nowrap;text-align:right;font-variant-numeric:tabular-nums}th{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;background:#f8fafc;position:sticky;top:0}th:first-child,td:first-child{text-align:left}tbody tr{cursor:pointer}tbody tr:hover{background:#f3f7fc}.place{font-weight:750}.subplace{display:block;font-size:11px;color:var(--muted);font-weight:400}.positive{color:var(--green);font-weight:750}.negative{color:#a32d36;font-weight:750}.muted{color:var(--muted)}.notice{background:#fff8e7;border:1px solid #f0dfb1;color:#6f561b;border-radius:10px;padding:12px 14px;font-size:12px;margin-bottom:14px}.status{color:var(--muted);font-size:12px}.empty{padding:28px;text-align:center;color:var(--muted)}.footer{color:var(--muted);font-size:11px;padding:4px 2px 18px}.error{color:#a32d36}
+@media(max-width:1050px){.filters{grid-template-columns:repeat(3,minmax(0,1fr))}.context-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.chart-grid{grid-template-columns:1fr}}
+@media(max-width:650px){.wrap{padding:12px}.hero{display:block}.tag{margin-top:10px}.filters{grid-template-columns:repeat(2,minmax(0,1fr))}.kpis{grid-template-columns:1fr}.candidate{padding:14px}.num-value{font-size:27px}.context-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.bar-row{grid-template-columns:80px 1fr 72px}.card{padding:13px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="hero">
+    <div>
+      <h1>Presidencial 2026: crescimento entre turnos</h1>
+      <div class="subtitle">Compare os votos de Lula e Flávio Bolsonaro no 1º e no 2º turno. Use os filtros para sair do panorama nacional e chegar à região, UF, município, local de votação, zona e seção eleitoral.</div>
+    </div>
+    <div class="tag">Fonte: CSV oficial do TSE</div>
+  </header>
+
+  <section class="card">
+    <h2 class="section-title">Filtros geográficos <button id="reset">Limpar filtros</button></h2>
+    <div class="filters">
+      <label class="field">Região<select id="region"><option value="">Brasil inteiro</option></select></label>
+      <label class="field">Estado / UF<select id="uf"><option value="">Todas as UFs</option></select></label>
+      <label class="field">Município<select id="municipality"><option value="">Todos os municípios</option></select></label>
+      <label class="field">Local de votação<select id="local"><option value="">Todos os locais</option></select></label>
+      <label class="field">Zona eleitoral<select id="zone"><option value="">Todas as zonas</option></select></label>
+      <label class="field">Seção eleitoral<select id="section"><option value="">Todas as seções</option></select></label>
+    </div>
+    <div class="filter-foot"><span id="filterSummary">Carregando dados…</span><span id="status" class="status">Preparando dashboard…</span></div>
+  </section>
+
+  <div id="missing" class="notice" hidden>O conjunto de dados processado ainda não está publicado. Execute o gerador local descrito no README da branch e publique o arquivo <code>data/dashboard/votos_turnos_2026.json.gz</code> junto com este dashboard.</div>
+  <div id="coverageNotice" class="notice" hidden></div>
+
+  <section class="card">
+    <h2 class="section-title">Variação dos votos no recorte selecionado</h2>
+    <div class="kpis">
+      <article class="candidate lula">
+        <div class="candidate-head"><div><div class="candidate-name">Lula</div><div class="partycode">Código 13 · votos nominais</div></div><div id="lulaDeltaBadge" class="delta neutral">—</div></div>
+        <div class="numbers">
+          <div><div class="num-label">1º turno</div><div id="lulaT1" class="num-value">—</div><div id="lulaShare1" class="num-sub">—</div></div>
+          <div><div class="num-label">2º turno</div><div id="lulaT2" class="num-value">—</div><div id="lulaShare2" class="num-sub">—</div></div>
+        </div>
+        <div class="share-row"><span>Variação absoluta</span><strong id="lulaAbs">—</strong></div>
+        <div class="share-row"><span>Variação percentual</span><strong id="lulaPct">—</strong></div>
+        <div class="share-row"><span>Participação nos votos dos dois candidatos</span><strong id="lulaShareDelta">—</strong></div>
+        <div class="share-track"><span id="lulaShareBar1" class="share1" style="width:0%"></span><span id="lulaShareBar2" class="share2" style="width:0%"></span></div>
+      </article>
+      <article class="candidate flavio">
+        <div class="candidate-head"><div><div class="candidate-name">Flávio Bolsonaro</div><div class="partycode">Código 22 · votos nominais</div></div><div id="flavioDeltaBadge" class="delta neutral">—</div></div>
+        <div class="numbers">
+          <div><div class="num-label">1º turno</div><div id="flavioT1" class="num-value">—</div><div id="flavioShare1" class="num-sub">—</div></div>
+          <div><div class="num-label">2º turno</div><div id="flavioT2" class="num-value">—</div><div id="flavioShare2" class="num-sub">—</div></div>
+        </div>
+        <div class="share-row"><span>Variação absoluta</span><strong id="flavioAbs">—</strong></div>
+        <div class="share-row"><span>Variação percentual</span><strong id="flavioPct">—</strong></div>
+        <div class="share-row"><span>Participação nos votos dos dois candidatos</span><strong id="flavioShareDelta">—</strong></div>
+        <div class="share-track"><span id="flavioShareBar1" class="share1" style="width:0%"></span><span id="flavioShareBar2" class="share2" style="width:0%"></span></div>
+      </article>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2 class="section-title">Big numbers do recorte</h2>
+    <div class="context-grid">
+      <div class="context-kpi"><div class="label">Brancos · 1º → 2º turno</div><div id="blankTotal" class="value">—</div><div id="blankDelta" class="num-sub">—</div></div>
+      <div class="context-kpi"><div class="label">Nulos · 1º → 2º turno</div><div id="nullTotal" class="value">—</div><div id="nullDelta" class="num-sub">—</div></div>
+      <div class="context-kpi"><div class="label">Seções com dados no 1º turno</div><div id="sections1" class="value">—</div><div class="num-sub">Dentro dos filtros atuais</div></div>
+      <div class="context-kpi"><div class="label">Seções com dados no 2º turno</div><div id="sections2" class="value">—</div><div id="sectionsBoth" class="num-sub">—</div></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2 class="section-title">Comparação visual</h2>
+    <div class="chart-grid">
+      <div class="chartbox"><h3>Votos nominais por candidato</h3><div id="voteChart"></div><div class="legend"><span><i style="background:#9ba9bd;opacity:.5"></i>1º turno</span><span><i style="background:#2459a9"></i>Lula · 2º turno</span><span><i style="background:#b43b43"></i>Flávio · 2º turno</span></div></div>
+      <div class="chartbox"><h3>Variação absoluta de votos</h3><div id="deltaChart"></div><div class="legend"><span>O valor pode ser positivo ou negativo; não representa transferência individual de votos.</span></div></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2 class="section-title"><span id="tableTitle">Detalhamento geográfico</span><span class="status">Clique em uma linha para aprofundar</span></h2>
+    <div class="table-wrap"><table><thead><tr>
+      <th>Localidade</th><th>Seções 1º turno</th><th>Seções 2º turno</th>
+      <th>Lula · 1º</th><th>Lula · 2º</th><th>Δ Lula</th>
+      <th>Flávio · 1º</th><th>Flávio · 2º</th><th>Δ Flávio</th>
+    </tr></thead><tbody id="detailRows"><tr><td colspan="9" class="empty">Aguardando dados…</td></tr></tbody></table></div>
+  </section>
+
+  <footer class="footer">Fonte dos votos: arquivo de votação por seção das Eleições 2026 do Tribunal Superior Eleitoral (TSE). A comparação usa os códigos de votação 13 (Lula), 22 (Flávio Bolsonaro), 95 (branco) e 96 (nulo). O aumento ou a redução entre turnos é uma diferença agregada; não permite identificar transferência individual de votos. Se uma seção existir em apenas um turno, a cobertura é indicada separadamente e o valor ausente não é tratado como zero.</footer>
+</div>
+<script>
+(function(){
+"use strict";
+const URL_DATA = "data/dashboard/votos_turnos_2026.json.gz";
+const ORDER = ["flavio","lula","branco","nulo"];
+const LABELS = {flavio:"Flávio Bolsonaro",lula:"Lula",branco:"Brancos",nulo:"Nulos"};
+const FIELDS = [
+  {id:"region",key:"r",label:"Região",all:"Brasil inteiro"},
+  {id:"uf",key:"u",label:"UF",all:"Todas as UFs"},
+  {id:"municipality",key:"m",label:"Município",all:"Todos os municípios"},
+  {id:"local",key:"l",label:"Local",all:"Todos os locais"},
+  {id:"zone",key:"z",label:"Zona",all:"Todas as zonas"},
+  {id:"section",key:"s",label:"Seção",all:"Todas as seções"}
+];
+let records = [];
+let coverage = {};
+const $ = id => document.getElementById(id);
+const fmt = n => Number(n||0).toLocaleString("pt-BR");
+const pct = n => n===null || !Number.isFinite(n) ? "não calculável" : (n>0?"+":"")+n.toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2})+"%";
+const pp = n => n===null || !Number.isFinite(n) ? "—" : (n>0?"+":"")+n.toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2})+" p.p.";
+const deltaText = n => (n>0?"+":"")+fmt(n);
+function changePct(a,b){return a===0?null:(b-a)/a*100}
+function votes(recordsFor,turn,index){
+  let total=0, count=0;
+  for(const r of recordsFor){const v=r[turn];if(v!==null){total+=Number(v[index]||0);count++}}
+  return {total,count};
+}
+function totals(list){
+  const out={v1:[0,0,0,0],v2:[0,0,0,0],n1:0,n2:0,both:0};
+  for(const r of list){
+    if(r.v1!==null){out.n1++;for(let i=0;i<4;i++)out.v1[i]+=Number(r.v1[i]||0)}
+    if(r.v2!==null){out.n2++;for(let i=0;i<4;i++)out.v2[i]+=Number(r.v2[i]||0)}
+    if(r.v1!==null&&r.v2!==null)out.both++;
+  }
+  return out;
+}
+function matches(r,skipId){
+  for(const f of FIELDS){
+    if(f.id===skipId)continue;
+    const value=$(f.id).value;
+    if(value && String(r[f.key])!==value)return false;
+  }
+  return true;
+}
+function optionsFor(f){
+  const rows=records.filter(r=>matches(r,f.id));
+  const map=new Map();
+  for(const r of rows){
+    const value=String(r[f.key]??"");
+    if(!value)continue;
+    let label=value;
+    if(f.id==="uf")label=value==="ZZ"?"Exterior (ZZ)":value;
+    if(f.id==="municipality")label=value+" · "+r.n;
+    if(f.id==="local")label=(value?value+" · ":"")+(r.ln||"Local não identificado");
+    if(f.id==="zone")label=value;
+    if(f.id==="section")label=value;
+    if(!map.has(value))map.set(value,label);
+  }
+  return [...map.entries()].sort((a,b)=>{
+    if(f.id==="zone"||f.id==="section")return a[0].localeCompare(b[0],"pt-BR",{numeric:true});
+    return a[1].localeCompare(b[1],"pt-BR",{numeric:true});
+  });
+}
+function updateFilters(){
+  for(const f of FIELDS){
+    const sel=$(f.id), current=sel.value, opts=optionsFor(f);
+    sel.innerHTML="";
+    const first=document.createElement("option");first.value="";first.textContent=f.all;sel.appendChild(first);
+    for(const [value,label] of opts){const o=document.createElement("option");o.value=value;o.textContent=label;sel.appendChild(o)}
+    if(opts.some(x=>x[0]===current))sel.value=current;else sel.value="";
+  }
+}
+function filtered(){return records.filter(r=>matches(r,null))}
+function setText(id,value){$(id).textContent=value}
+function setBadge(id,delta){
+  const el=$(id);el.className="delta "+(delta>0?"":delta<0?"down":"neutral");
+  el.textContent=delta>0?"+"+pct(delta):delta<0?pct(delta):delta===0?"0,00%":"não calculável";
+}
+function renderCandidate(name,index,cls,t){
+  const a=t.v1[index], b=t.v2[index], d=b-a, p=changePct(a,b);
+  const valid1=t.v1[0]+t.v1[1], valid2=t.v2[0]+t.v2[1];
+  const share1=valid1? a/valid1*100:null, share2=valid2?b/valid2*100:null;
+  setText(name+"T1",fmt(a));setText(name+"T2",fmt(b));
+  setText(name+"Share1",share1===null?"Participação: —":"Participação: "+share1.toLocaleString("pt-BR",{maximumFractionDigits:2})+"%");
+  setText(name+"Share2",share2===null?"Participação: —":"Participação: "+share2.toLocaleString("pt-BR",{maximumFractionDigits:2})+"%");
+  setText(name+"Abs",deltaText(d));setText(name+"Pct",pct(p));
+  setText(name+"ShareDelta",share1===null||share2===null?"—":pp(share2-share1));
+  setBadge(name+"DeltaBadge",p);
+  $(name+"ShareBar1").style.width=(share1||0)+"%";$(name+"ShareBar2").style.width=(share2||0)+"%";
+}
+function renderBars(t){
+  const max=Math.max(t.v1[0],t.v1[1],t.v2[0],t.v2[1],1);
+  const items=[["Lula",t.v1[1],t.v2[1],"#2459a9"],["Flávio",t.v1[0],t.v2[0],"#b43b43"]];
+  $("voteChart").innerHTML=items.map(([name,a,b,color])=>'<div class="bar-row"><div class="bar-label">'+name+'</div><div class="bar-stack"><div class="bar t1" style="width:'+(a/max*100)+'%;background:'+color+'"></div><div class="bar t2" style="width:'+(b/max*100)+'%;background:'+color+'"></div></div><div class="bar-value">'+fmt(b)+'</div></div><div class="status" style="margin:-5px 0 12px 110px">1º: '+fmt(a)+' · 2º: '+fmt(b)+'</div>').join("");
+  const deltas=[["Lula",t.v2[1]-t.v1[1],"#2459a9"],["Flávio",t.v2[0]-t.v1[0],"#b43b43"]];
+  const maxAbs=Math.max(...deltas.map(x=>Math.abs(x[1])),1);
+  $("deltaChart").innerHTML=deltas.map(([name,d,color])=>'<div class="bar-row"><div class="bar-label">'+name+'</div><div style="background:#edf1f6;border-radius:4px;overflow:hidden"><div class="bar" style="width:'+(Math.abs(d)/maxAbs*100)+'%;background:'+(d<0?"#8c96a5":color)+'"></div></div><div class="bar-value '+(d<0?"negative":"positive")+'">'+deltaText(d)+'</div></div>').join("");
+}
+function aggregateGroup(rows,keyFn,labelFn){
+  const map=new Map();
+  for(const r of rows){
+    const key=keyFn(r);
+    if(!map.has(key))map.set(key,{key,label:labelFn(r),records:[]});
+    map.get(key).records.push(r);
+  }
+  return [...map.values()].map(g=>({...g,t:totals(g.records)})).sort((a,b)=>(b.t.v2[0]+b.t.v2[1])-(a.t.v2[0]+a.t.v2[1]));
+}
+function deltaCell(n){return '<td class="'+(n>0?"positive":n<0?"negative":"muted")+'">'+deltaText(n)+'</td>'}
+function drillLevel(){
+  if($("section").value)return "section";
+  if($("zone").value||$("local").value)return "section";
+  if($("municipality").value)return "local";
+  if($("uf").value)return "municipality";
+  if($("region").value)return "uf";
+  return "region";
+}
+function renderTable(rows){
+  const level=drillLevel();let groups,title;
+  if(level==="region"){title="Regiões";groups=aggregateGroup(rows,r=>r.r,r=>r.r)}
+  else if(level==="uf"){title="Estados / UFs";groups=aggregateGroup(rows,r=>r.u,r=>r.u==="ZZ"?"Exterior (ZZ)":r.u)}
+  else if(level==="municipality"){title="Municípios";groups=aggregateGroup(rows,r=>r.u+"|"+r.m,r=>r.n+" ("+r.m+")")}
+  else if(level==="local"){title="Locais de votação";groups=aggregateGroup(rows,r=>r.u+"|"+r.m+"|"+r.l+"|"+r.ln,r=>(r.l?r.l+" · ":"")+(r.ln||"Local não identificado"))}
+  else {title="Seções eleitorais";groups=aggregateGroup(rows,r=>[r.u,r.m,r.z,r.s].join("|"),r=>"Zona "+r.z+" · Seção "+r.s+(r.ln?" · "+r.ln:""))}
+  setText("tableTitle",title+" · "+fmt(groups.length)+" itens");
+  if(!groups.length){$("detailRows").innerHTML='<tr><td colspan="9" class="empty">Nenhum dado para os filtros selecionados.</td></tr>';return}
+  $("detailRows").innerHTML=groups.slice(0,3000).map(g=>{
+    const t=g.t, a=t.v1, b=t.v2;
+    const n1=fmt(t.n1),n2=fmt(t.n2);
+    let sub="";
+    if(level==="section"){const r=g.records[0];sub="Município "+r.n+" · zona "+r.z+" · seção "+r.s}
+    else if(level==="local"){const r=g.records[0];sub=r.u+" · "+r.n+" · "+fmt(g.records.length)+" seções"}
+    else if(level==="municipality"){const r=g.records[0];sub=r.u+" · código "+r.m}
+    else if(level==="uf")sub=g.key==="ZZ"?"Exterior": "Região "+(g.records[0]?.r||"");
+    else if(level==="region")sub=fmt(new Set(g.records.map(r=>r.u)).size)+" UFs/códigos geográficos";
+    return '<tr data-level="'+level+'" data-key="'+encodeURIComponent(g.key)+'"><td><span class="place">'+g.label+'</span><span class="subplace">'+sub+'</span></td><td>'+n1+'</td><td>'+n2+'</td><td>'+fmt(a[1])+'</td><td>'+fmt(b[1])+'</td>'+deltaCell(b[1]-a[1])+'<td>'+fmt(a[0])+'</td><td>'+fmt(b[0])+'</td>'+deltaCell(b[0]-a[0])+'</tr>';
+  }).join("");
+  if(groups.length>3000)$("detailRows").insertAdjacentHTML("beforeend",'<tr><td colspan="9" class="muted">Exibindo os primeiros 3.000 itens. Use mais filtros para refinar o detalhamento.</td></tr>');
+  $("detailRows").querySelectorAll("tr[data-level]").forEach(tr=>tr.addEventListener("click",()=>drill(tr.dataset.level,decodeURIComponent(tr.dataset.key),rows)));
+}
+function drill(level,key,rows){
+  const r=rows.find(x=>level==="region"?x.r===key:level==="uf"?x.u===key:level==="municipality"?(x.u+"|"+x.m)===key:level==="local"?(x.u+"|"+x.m+"|"+x.l+"|"+x.ln)===key:[x.u,x.m,x.z,x.s].join("|")===key);
+  if(!r)return;
+  if(level==="region")$("region").value=r.r;
+  if(level==="uf")$("uf").value=r.u;
+  if(level==="municipality")$("municipality").value=r.m;
+  if(level==="local")$("local").value=r.l;
+  if(level==="section"){$("zone").value=r.z;$("section").value=r.s;if(r.l)$("local").value=r.l}
+  updateFilters();render();
+}
+function render(){
+  if(!records.length)return;
+  updateFilters();
+  const rows=filtered(), t=totals(rows);
+  renderCandidate("lula",1,"lula",t);
+  renderCandidate("flavio",0,"flavio",t);
+  setText("blankTotal",fmt(t.v1[2])+" → "+fmt(t.v2[2]));setText("blankDelta","Variação: "+deltaText(t.v2[2]-t.v1[2])+" ("+pct(changePct(t.v1[2],t.v2[2]))+")");
+  setText("nullTotal",fmt(t.v1[3])+" → "+fmt(t.v2[3]));setText("nullDelta","Variação: "+deltaText(t.v2[3]-t.v1[3])+" ("+pct(changePct(t.v1[3],t.v2[3]))+")");
+  setText("sections1",fmt(t.n1));setText("sections2",fmt(t.n2));setText("sectionsBoth",fmt(t.both)+" seções presentes nos dois turnos");
+  setText("filterSummary",fmt(rows.length)+" seções no recorte · "+fmt(t.both)+" com dados nos dois turnos");
+  renderBars(t);renderTable(rows);
+  const notice=$("coverageNotice");
+  if(t.n1!==t.n2||t.both!==rows.length){
+    notice.hidden=false;notice.textContent="A cobertura dos turnos difere neste recorte: "+fmt(t.n1)+" seções no 1º turno, "+fmt(t.n2)+" no 2º e "+fmt(t.both)+" presentes em ambos. Os totais somam os registros disponíveis em cada turno; a diferença de votos não deve ser interpretada como crescimento em um conjunto idêntico de seções sem considerar essa cobertura.";
+  }else{notice.hidden=true}
+}
+async function load(){
+  $("status").textContent="Baixando conjunto de dados…";
+  try{
+    const response=await fetch(URL_DATA,{cache:"no-cache"});
+    if(!response.ok)throw new Error("HTTP "+response.status);
+    const compressed=await response.arrayBuffer();
+    if(!("DecompressionStream" in window))throw new Error("Este navegador não oferece descompressão gzip nativa.");
+    const stream=new Blob([compressed]).stream().pipeThrough(new DecompressionStream("gzip"));
+    const data=await new Response(stream).json();
+    if(data.schemaVersion!==1||!Array.isArray(data.records))throw new Error("Formato de dados inesperado.");
+    records=data.records;coverage=data.coverage||{};
+    $("status").textContent=fmt(records.length)+" seções carregadas";
+    $("missing").hidden=true;
+    if(coverage.onlyRound1||coverage.onlyRound2){
+      $("coverageNotice").hidden=false;
+      $("coverageNotice").textContent="O arquivo contém seções com cobertura diferente entre os turnos: "+fmt(coverage.onlyRound1||0)+" apenas no 1º turno e "+fmt(coverage.onlyRound2||0)+" apenas no 2º. O painel informa a cobertura de cada recorte e não transforma ausência de registro em zero.";
+    }
+    render();
+  }catch(err){
+    console.error(err);
+    $("status").textContent="Dados não carregados";
+    $("missing").hidden=false;
+    $("missing").innerHTML='Não foi possível carregar <code>'+URL_DATA+'</code> ('+String(err.message||err)+'). O dashboard HTML está publicado, mas depende do conjunto compactado gerado a partir do CSV oficial.';
+    $("detailRows").innerHTML='<tr><td colspan="9" class="empty">Publique o arquivo de dados compactado para ativar o painel.</td></tr>';
+  }
+}
+for(const f of FIELDS)$(f.id).addEventListener("change",()=>{updateFilters();render()});
+$("reset").addEventListener("click",()=>{for(const f of FIELDS)$(f.id).value="";updateFilters();render()});
+load();
+})();
+</script>
+</body>
+</html>
