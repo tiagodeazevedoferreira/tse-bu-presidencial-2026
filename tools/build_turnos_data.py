@@ -107,7 +107,7 @@ def main() -> None:
             chunk["NR_VOTAVEL"] = chunk["NR_VOTAVEL"].str.strip()
             mask = (
                 chunk["NR_TURNO"].isin(["1", "2"])
-                & chunk.apply(lambda r: r["CD_ELEICAO"] == EXPECTED_ELECTION.get(r["NR_TURNO"], ""), axis=1)
+                & chunk["CD_ELEICAO"].eq(chunk["NR_TURNO"].map(EXPECTED_ELECTION))
                 & chunk["DS_CARGO"].eq("presidente")
                 & chunk["NR_VOTAVEL"].isin([str(c) for c in CODES])
             )
