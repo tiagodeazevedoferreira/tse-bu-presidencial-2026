@@ -142,7 +142,7 @@ function matches(r,skipId){
     if(f.id===skipId)continue;
     const value=$(f.id).value;
     if(!value)continue;
-    const actual=f.id==="section"?(r.z+"|"+r.s):String(r[f.key]);
+    const actual=f.id==="local"?(r.u+"|"+r.m+"|"+r.l):f.id==="zone"?(r.u+"|"+r.m+"|"+r.z):f.id==="section"?(r.u+"|"+r.m+"|"+r.z+"|"+r.s):String(r[f.key]);
     if(actual!==value)return false;
   }
   return true;
@@ -152,7 +152,7 @@ function optionsFor(f){
   const rows=records.filter(r=>FIELDS.slice(0,upto).every(prior=>{
     const value=$(prior.id).value;
     if(!value)return true;
-    const actual=prior.id==="section"?(r.z+"|"+r.s):String(r[prior.key]);
+    const actual=prior.id==="local"?(r.u+"|"+r.m+"|"+r.l):prior.id==="zone"?(r.u+"|"+r.m+"|"+r.z):prior.id==="section"?(r.u+"|"+r.m+"|"+r.z+"|"+r.s):String(r[prior.key]);
     return actual===value;
   }));
   const map=new Map();
@@ -161,9 +161,9 @@ function optionsFor(f){
     let label=value;
     if(f.id==="uf")label=value==="ZZ"?"Exterior (ZZ)":value;
     if(f.id==="municipality")label=value+" · "+r.n;
-    if(f.id==="local")label=(value?value+" · ":"")+(r.ln||"Local não identificado");
-    if(f.id==="zone")label=value;
-    if(f.id==="section"){value=r.z+"|"+r.s;label="Zona "+r.z+" · Seção "+r.s;}
+    if(f.id==="local"){value=r.u+"|"+r.m+"|"+r.l;label=(r.l?r.l+" · ":"")+(r.ln||"Local não identificado")+" · "+r.n+" ("+r.u+")";}
+    if(f.id==="zone"){value=r.u+"|"+r.m+"|"+r.z;label="Zona "+r.z+" · "+r.n+" ("+r.u+")";}
+    if(f.id==="section"){value=r.u+"|"+r.m+"|"+r.z+"|"+r.s;label="Zona "+r.z+" · Seção "+r.s+" · "+r.n+" ("+r.u+")";}
     if(!value)continue;
     if(!map.has(value))map.set(value,label);
   }
@@ -254,8 +254,8 @@ function drill(level,key,rows){
   if(level==="region")$("region").value=r.r;
   if(level==="uf")$("uf").value=r.u;
   if(level==="municipality")$("municipality").value=r.m;
-  if(level==="local")$("local").value=r.l;
-  if(level==="section"){$("zone").value=r.z;$("section").value=r.z+"|"+r.s;if(r.l)$("local").value=r.l}
+  if(level==="local")$("local").value=r.u+"|"+r.m+"|"+r.l;
+  if(level==="section"){$("zone").value=r.u+"|"+r.m+"|"+r.z;$("section").value=r.u+"|"+r.m+"|"+r.z+"|"+r.s;if(r.l)$("local").value=r.u+"|"+r.m+"|"+r.l}
   updateFilters();render();
 }
 function render(){
