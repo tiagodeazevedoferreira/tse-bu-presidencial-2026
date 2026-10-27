@@ -1,0 +1,53 @@
+name: Publish presidential turn-comparison dashboard
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "index.html"
+      - "tools/**"
+      - "data/dashboard/**"
+      - ".github/workflows/pages-comparacao-turnos.yml"
+  workflow_run:
+    workflows: ["National 27-UF pipeline"]
+    types: [completed]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare static site
+        run: |
+          mkdir -p site/data/dashboard
+          cp index.html site/index.html
+          if [ -f data/dashboard/votos_turnos_2026.json.gz ]; then
+            cp data/dashboard/votos_turnos_2026.json.gz site/data/dashboard/
+            echo "Dashboard data found and included."
+          else
+            echo "::warning::data/dashboard/votos_turnos_2026.json.gz is not present; dashboard will show the missing-data notice."
+          fi
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
